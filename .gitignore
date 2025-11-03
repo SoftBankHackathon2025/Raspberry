@@ -1,0 +1,195 @@
+# ------------------------------
+# Build System
+# ------------------------------
+.gradle/
+build/
+out/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Maven target (if mixed build exists)
+target/
+
+# ------------------------------
+# IDE / Editor
+# ------------------------------
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+.idea_modules/
+
+# VS Code
+.vscode/
+.history/
+
+# Eclipse
+.project
+.classpath
+.settings/
+.metadata/
+.recommenders/
+bin/
+tmp/
+
+# NetBeans
+.nb-gradle/
+nbproject/
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+.\#*
+
+# ------------------------------
+# OS-specific
+# ------------------------------
+.DS_Store
+Thumbs.db
+
+# ------------------------------
+# Java / Spring Boot
+# ------------------------------
+*.class
+*.log
+*.ctxt
+hs_err_pid*
+replay_pid*
+
+# ------------------------------
+# Docker / Deployment / MSA
+# ------------------------------
+# Ignore local docker artifacts, but not docker-compose.yml
+docker-compose.override.yml
+docker-data/
+.env
+.env.*
+*.env.local
+
+# MSA-specific logs and data
+logs/
+**/logs/
+log/
+**/log/
+data/
+**/data/
+temp/
+**/temp/
+
+# Service discovery & registry
+eureka-client/
+consul-data/
+service-registry/
+
+# API Gateway artifacts
+gateway-cache/
+gateway-logs/
+
+# Microservice artifacts
+*.pid
+nohup.out
+
+# ------------------------------
+# Archives
+# ------------------------------
+*.jar
+*.war
+*.nar
+*.ear
+*.zip
+*.tar.gz
+*.rar
+
+# ------------------------------
+# Test / Coverage / Reports
+# ------------------------------
+test-output/
+reports/
+coverage/
+jacoco/
+*.exec
+
+# ------------------------------
+# Sensitive files
+# ------------------------------
+*.key
+*.pem
+*.crt
+*.p12
+secrets/
+
+# Configuration files (exclude all, include examples explicitly if needed)
+application.properties
+application*.properties
+application.yml
+application*.yml
+config/application*.yml
+config/application*.properties
+src/main/resources/application*.yml
+src/main/resources/application*.properties
+**/application.properties
+**/application*.properties
+**/application.yml
+**/application*.yml
+
+# Database & API credentials
+database.properties
+db.properties
+api.properties
+credentials.properties
+
+# Cloud & Infrastructure secrets
+terraform.tfvars
+terraform.tfstate*
+.terraform/
+ansible-vault.yml
+k8s-secrets.yml
+helm-values-*.yml
+
+# JWT & OAuth
+*.jks
+*.p12
+keystore.jks
+truststore.jks
+oauth.properties
+jwt.properties
+
+# External service keys
+aws.properties
+gcp.properties
+azure.properties
+redis.properties
+kafka.properties
+elasticsearch.properties
+
+# ------------------------------
+# Misc
+# ------------------------------
+*.bak
+*.tmp
+*.orig
+*#
+.#*
+
+# Node modules (if any frontend build tools)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Cache directories
+.cache/
+.gradle-cache/
+
+# 
+jdk-17.0.12+7/
+CLAUDE.md
