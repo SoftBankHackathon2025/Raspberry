@@ -4,11 +4,9 @@ on:
   push:
     branches:
         - main
-        - 'feat/ci-cd-settings'
   pull_request:
     branches:
         - main
-        - 'feat/ci-cd-settings'
   workflow_dispatch: # 수동 실행
   schedule:
     - cron: '0 2 * * 1' # 매주 월요일 오전 2시 (선택사항)

@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - feat/ci-cd-settings
   pull_request:
     branches:
       - main
@@ -140,7 +139,7 @@ jobs:
     name: Deploy to EC2
     needs: docker-build-scan-push
     runs-on: ubuntu-latest
-    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/ci-cd-settings') && github.event_name == 'push'
+    if: (github.ref == 'refs/heads/main') && github.event_name == 'push'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
