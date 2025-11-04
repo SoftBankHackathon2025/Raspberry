@@ -240,6 +240,10 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           script: |
+
+            echo "⏳ Waiting for services to initialize..."
+            sleep 50
+
             cd /home/ubuntu/Raspberry
 
             echo "🔍 Checking service health..."
