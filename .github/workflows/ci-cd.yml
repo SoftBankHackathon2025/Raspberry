@@ -264,7 +264,7 @@ jobs:
             fi
 
             echo "📊 Service Status:"
-            docker compose ps
+            docker-compose ps
 
       # Slack 알림 (선택사항)
       - name: Notify Deployment Status
