@@ -10,6 +10,10 @@ on:
       - main
   workflow_dispatch:
 
+    permissions:
+      contents: read
+      security-events: write
+
 env:
   DOCKER_REGISTRY: softbank2025  # DockerHub username
   IMAGE_TAG: ${{ github.sha }}
