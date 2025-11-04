@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feat/ci-cd-settings
   pull_request:
     branches:
       - main
@@ -134,8 +135,7 @@ jobs:
     name: Deploy to EC2
     needs: docker-build-scan-push
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/ci-cd-settings') && github.event_name == 'push'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -143,11 +143,11 @@ jobs:
       # docker-compose.yml 업데이트 (이미지 태그 변경)
       - name: Update docker-compose.yml with new image tags
         run: |
-          sed -i "s|image: softbank2025/server.*|image: kwa06001/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "s|image: softbank2025/gateway.*|image: kwa06001/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "s|image: softbank2025/fe.*|image: kwa06001/fe:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "s|image: softbank2025/deploy.*|image: kwa06001/deploy:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "s|image: softbank2025/user.*|image: kwa06001/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "s|image: softbank2025/server.*|image: softbank2025/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "s|image: softbank2025/gateway.*|image: softbank2025/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "s|image: softbank2025/fe.*|image: softbank2025/fe:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "s|image: softbank2025/deploy.*|image: softbank2025/deploy:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "s|image: softbank2025/user.*|image: softbank2025/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
           
           echo "📝 Updated docker-compose.yml:"
           cat docker-compose.yml
@@ -194,7 +194,7 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           script: |
-            cd /home/ubuntu/SoftBankHackathon2025
+            cd /home/ubuntu/Raspberry
             
             echo "🔍 Checking service health..."
             
