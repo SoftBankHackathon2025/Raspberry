@@ -1,63 +1,71 @@
 services:
   eureka-server:
+    build: ./server
     image: softbank/server
     container_name: eureka-server
-    ports:
-      - "8761:8761"
-    networks:
-      - microservices
+    ports: ["8761:8761"]
+    networks: [microservices]
 
   gateway:
+    build: ./gateway
     image: softbank/gateway
     container_name: gateway
-    ports:
-      - "8080:8080"
-    depends_on:
-      - eureka-server
-    networks:
-      - microservices
+    ports: ["8080:8080"]
+    depends_on: [eureka-server]
+    networks: [microservices]
     environment:
       - eureka.client.service-url.defaultZone=http://eureka-server:8761/eureka/
 
   frontend:
+    build: ./fe
     image: softbank/fe
     container_name: frontend
-    ports:
-      - "8081:8081"
-    depends_on:
-      - eureka-server
-    networks:
-      - microservices
+    ports: ["8081:8080"]
+    depends_on: [eureka-server]
+    networks: [microservices]
     environment:
       - eureka.client.service-url.defaultZone=http://eureka-server:8761/eureka/
 
   deploy:
+    build: ./deploy
     image: softbank/deploy
     container_name: deploy
-    ports:
-      - "8082:8082"
-    depends_on:
-      - eureka-server
-    networks:
-      - microservices
+    ports: ["8082:8080"]
+    depends_on: [eureka-server]
+    networks: [microservices]
     environment:
       - eureka.client.service-url.defaultZone=http://eureka-server:8761/eureka/
 
   user:
+    build: ./user
     image: softbank/user
     container_name: user
-    ports:
-      - "8083:8083"
-    depends_on:
-      - eureka-server
-    networks:
-      - microservices
+    ports: ["8083:8080"]
+    depends_on: [eureka-server]
+    networks: [microservices]
     environment:
       - eureka.client.service-url.defaultZone=http://eureka-server:8761/eureka/
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    command: ["--config.file=/etc/prometheus/prometheus.yml"]
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports: ["9090:9090"]
+    depends_on: [gateway, frontend, deploy, user]
+    networks: [microservices]
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports: ["3000:3000"]
+    volumes:
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+    depends_on: [prometheus]
+    networks: [microservices]
 
 networks:
   microservices:
     driver: bridge
-
-volumes:
-  eureka-data:
