@@ -10,9 +10,9 @@ on:
       - main
   workflow_dispatch:
 
-    permissions:
-      contents: read
-      security-events: write
+permissions:
+    contents: read
+    security-events: write
 
 env:
   DOCKER_REGISTRY: softbank2025  # DockerHub username
@@ -43,7 +43,7 @@ jobs:
 
       - name: Run Tests
         run: ./gradlew test
-        continue-on-error: true
+        
 
       # 빌드된 JAR 파일을 아티팩트로 저장
       - name: Upload Build Artifacts
