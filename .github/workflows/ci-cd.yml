@@ -1,18 +1,24 @@
 name: CI/CD Pipeline for Microservices
 
+permissions:
+  contents: read
+  security-events: write   # SARIF 업로드용
+
 on:
   push:
     branches:
       - main
       - feat/ci-cd-settings
+      - feat/LandingPage
   pull_request:
     branches:
       - main
   workflow_dispatch:
-
-    permissions:
-      contents: read
-      security-events: write
+    inputs:
+      env:
+        description: "Target environment"
+        required: false
+        default: "dev"
 
 env:
   DOCKER_REGISTRY: softbank2025  # DockerHub username
@@ -140,7 +146,11 @@ jobs:
     name: Deploy to EC2
     needs: docker-build-scan-push
     runs-on: ubuntu-latest
-    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feat/ci-cd-settings') && github.event_name == 'push'
+    if: >
+      (github.ref == 'refs/heads/main' 
+       || github.ref == 'refs/heads/feat/ci-cd-settings'
+       || github.ref == 'refs/heads/feat/LandingPage')
+      && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
