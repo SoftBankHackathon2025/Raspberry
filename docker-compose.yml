@@ -1,6 +1,6 @@
 services:
   eureka-server:
-    image: softbank/server
+    image: softbank2025/server
     container_name: eureka-server
     ports:
       - "8761:8761"
@@ -8,7 +8,7 @@ services:
       - microservices
 
   gateway:
-    image: softbank/gateway
+    image: softbank2025/gateway
     container_name: gateway
     ports:
       - "8080:8080"
@@ -20,7 +20,7 @@ services:
       - eureka.client.service-url.defaultZone=http://eureka-server:8761/eureka/
 
   frontend:
-    image: softbank/fe
+    image: softbank2025/fe
     container_name: frontend
     ports:
       - "8081:8081"
@@ -32,7 +32,7 @@ services:
       - eureka.client.service-url.defaultZone=http://eureka-server:8761/eureka/
 
   deploy:
-    image: softbank/deploy
+    image: softbank2025/deploy
     container_name: deploy
     ports:
       - "8082:8082"
@@ -44,7 +44,7 @@ services:
       - eureka.client.service-url.defaultZone=http://eureka-server:8761/eureka/
 
   user:
-    image: softbank/user
+    image: softbank2025/user
     container_name: user
     ports:
       - "8083:8083"
