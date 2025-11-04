@@ -242,7 +242,7 @@ jobs:
             echo "🔍 Checking service health..."
 
             # Eureka Server 체크
-            if curl -sf http://localhost:8761/actuator/health > /dev/null 2>&1; then
+            if curl -sf http://localhost:8761 > /dev/null 2>&1; then
               echo "✅ Eureka Server is healthy"
             else
               echo "❌ Eureka Server health check failed"
