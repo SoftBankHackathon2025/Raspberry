@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: 'spring-msa'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['gateway:8080']
+        labels:
+          application: 'gateway'
+      - targets: ['frontend:8080']
+        labels:
+          application: 'frontend'
+      - targets: ['deploy:8080']
+        labels:
+          application: 'deploy'
+      - targets: ['user:8080']
+        labels:
+          application: 'user'
+      - targets: ['eureka-server:8761']
+        labels:
+          application: 'eureka'
