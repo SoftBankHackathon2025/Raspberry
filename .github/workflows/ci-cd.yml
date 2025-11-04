@@ -217,6 +217,9 @@ jobs:
             echo "📥 Pulling latest Docker images..."
             docker-compose pull
 
+            echo "🛑 Stopping and removing corrupted containers..."
+            docker-compose down
+
             echo "🚀 Starting services with new images..."
             docker-compose up -d --remove-orphans
 
