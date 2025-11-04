@@ -67,7 +67,7 @@
       
       <div class="hint">
         <strong>⚠️ 보안 주의사항:</strong><br>
-        • Personal Access Token은 <strong>repo 권한</strong> 또는 <strong>Actions: Read and write</strong> 필요<br>
+        • Personal Access Token은 <strong>Actions: write</strong>, <strong>Contents: read</strong>, <strong>Metadata: read</strong> 권한 필요<br>
         • 토큰은 sessionStorage에만 저장 (탭 닫으면 자동 삭제)<br>
         • <strong>절대 토큰을 공유하거나 커밋하지 마세요</strong><br>
         • Fine-grained token 사용을 권장합니다
@@ -84,8 +84,8 @@
       const CONFIG = {
         owner: 'SoftBankHackathon2025',             // GitHub 사용자명
         repo: 'Raspberry',        // 레포지토리명
-        workflow_id: 'deploy.yml',            // 워크플로우 파일명
-        ref: 'main'                           // 브랜치명
+        workflow_id: 'ci-cd.yml',            // 워크플로우 파일명
+        ref: 'feat/LandingPage'                           // 브랜치명
       };
       // ========================================
 
@@ -151,12 +151,12 @@
             },
             body: JSON.stringify({ 
               ref,
-              inputs: { environment: 'dev' }
+              inputs: { env: 'dev' }
             })
           });
 
           if(res.status === 204){
-            setStatus(`✅ 트리거 성공! 워크플로우가 실행 중입니다. (환경: ${environment})`, 'ok');
+            setStatus(`✅ 트리거 성공! 워크플로우가 실행 중입니다. (환경: dev)`, 'ok');
             setTimeout(() => {
               const actionsUrl = `https://github.com/${owner}/${repo}/actions`;
               setStatus(`GitHub Actions 탭에서 확인: ${actionsUrl}`, 'ok');
@@ -182,12 +182,9 @@
       deployBtn.addEventListener('click', triggerDispatch);
       
       // 엔터키로 배포
-      tokenInput.addEventListener('keypress', (e) => {
-        if(e.key === 'Enter') triggerDispatch();
-      });
-      envInput.addEventListener('keypress', (e) => {
-        if(e.key === 'Enter') triggerDispatch();
-      });
+      // tokenInput.addEventListener('keypress', (e) => {
+      //   if(e.key === 'Enter') triggerDispatch();
+      // });
 
       // 페이지 로드 시 토큰 복원
       loadToken();
