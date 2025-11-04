@@ -15,11 +15,11 @@ if [ $? -ne 0 ]; then
 fi
 
 echo "2. Docker 이미지 생성 중..."
-docker build -t softbank/server ./server
-docker build -t softbank/gateway ./gateway
-docker build -t softbank/fe ./fe
-docker build -t softbank/deploy ./deploy
-docker build -t softbank/user ./user
+docker build -t softbank2025/server ./server
+docker build -t softbank2025/gateway ./gateway
+docker build -t softbank2025/fe ./fe
+docker build -t softbank2025/deploy ./deploy
+docker build -t softbank2025/user ./user
 
 echo "3. 기존 컨테이너 정리 중..."
 docker-compose down
