@@ -1,0 +1,84 @@
+name: Code Static Analysis (SAST)
+
+on:
+  push:
+    branches:
+        - main
+  pull_request:
+    branches:
+        - main
+  workflow_dispatch: # 수동 실행
+  schedule:
+    - cron: '0 2 * * 1' # 매주 월요일 오전 2시 (선택사항)
+
+jobs:
+  semgrep_scan:
+    name: Run Semgrep SAST Scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read       # 코드를 Checkout 하기 위함
+      security-events: write # GitHub Security 탭에 SARIF 결과를 업로드하기 위함
+      actions: read        # 워크플로우 정보 읽기
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # 전체 히스토리 (더 정확한 분석)
+
+      # Java 환경 설정 (Semgrep이 Java 파일 파싱에 필요할 수 있음)
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5  # v5가 최신
+        with:
+          python-version: '3.x'
+
+      - name: Install Semgrep
+        run: |
+          pip install --upgrade pip
+          pip install semgrep
+
+      - name: Run Semgrep SAST Scan
+        run: |
+          # Java 전용 보안 룰셋 사용
+          semgrep scan \
+            --config=p/java \
+            --config=p/security-audit \
+            --config=p/owasp-top-ten \
+            --sarif \
+            --output=semgrep-results.sarif \
+            --exclude="*.test.java" \
+            --exclude="build/" \
+            --exclude=".gradle/" \
+            --exclude="gradle/" \
+            --exclude="node_modules/" \
+            --verbose
+        continue-on-error: true # 취약점을 찾아도 빌드를 중단하지 않음
+    
+      - name: Upload SARIF to GitHub Security Tab
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep-results.sarif
+          wait-for-processing: true
+          category: semgrep
+
+      # 결과를 Artifact로도 저장 (선택사항)
+      - name: Upload Semgrep Results as Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: semgrep-scan-results
+          path: semgrep-results.sarif
+          retention-days: 30
+
+      # 스캔 결과 요약 출력
+      - name: Print Scan Summary
+        if: always()
+        run: |
+          echo "✅ Semgrep 스캔 완료"
+          echo "📊 결과는 Security 탭에서 확인하세요: ${{ github.server_url }}/${{ github.repository }}/security/code-scanning"
