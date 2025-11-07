@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - main
-      - 'feat/ci-cd-test-deploy' # <--- 테스트 브랜치 임시 포함
+      - 'feat/ci-cd-test-deploy'
   pull_request:
     branches:
       - main
@@ -15,40 +15,13 @@ permissions:
     security-events: write
 
 env:
-  DOCKER_REGISTRY: softbank2025  # DockerHub username
+  DOCKER_REGISTRY: softbank2025
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:
   # Job 1: 유닛 테스트 (5개 서비스 병렬 실행)
   test-services:
     name: Run Unit Tests (Parallel)
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        service: [server, gateway, fe, deploy, user]
-      fail-fast: false # 하나 실패해도 다른 테스트 계속 진행
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: 'gradle' # Gradle 캐시 활성화
-
-      - name: Grant execute permission for gradlew
-        run: chmod +x ./gradlew
-
-      - name: Run Tests for ${{ matrix.service }}
-        run: ./gradlew :${{ matrix.service }}:test # <--- (최적화) 서비스별 테스트만 병렬 실행
-
-  # Job 2: JAR 빌드 + Docker 빌드/푸시/스캔 (5개 서비스 병렬 실행)
-  build-push:
-    name: Build, Scan & Push (Parallel)
-    needs: test-services # <--- (최적화) 테스트 통과 후 병렬 빌드 시작
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -69,9 +42,35 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
-      # <--- (최적화) JAR 빌드 자체를 병렬로 실행 (Artifact 업/다운로드 제거)
+      - name: Run Tests for ${{ matrix.service }}
+        run: ./gradlew :${{ matrix.service }}:test --parallel --build-cache
+
+  # Job 2: JAR 빌드 + Docker 빌드/푸시 (5개 서비스 병렬 실행, Trivy 제거)
+  build-push:
+    name: Build & Push (Parallel)
+    needs: test-services
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [server, gateway, fe, deploy, user]
+      fail-fast: false
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
+
       - name: Build JAR for ${{ matrix.service }}
-        run: ./gradlew :${{ matrix.service }}:bootJar
+        run: ./gradlew :${{ matrix.service }}:bootJar --parallel --build-cache -x test
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -82,7 +81,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # <--- (최적화) Docker 캐시 scope를 서비스별로 고유하게 설정
       - name: Build, Push, and Cache Docker Image
         uses: docker/build-push-action@v5
         with:
@@ -92,9 +90,25 @@ jobs:
           tags: |
             ${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}
             ${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}:latest
-          cache-from: type=gha,scope=${{ github.ref_name }}-${{ matrix.service }}
+          cache-from: |
+            type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}:latest
+            type=gha,scope=${{ github.ref_name }}-${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ github.ref_name }}-${{ matrix.service }}
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
 
+  # Job 3: 보안 스캔 (백그라운드, 배포와 병렬 실행)
+  security-scan:
+    name: Security Scan (Non-blocking)
+    needs: build-push
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    strategy:
+      matrix:
+        service: [server, gateway, fe, deploy, user]
+      fail-fast: false
+    
+    steps:
       - name: Cache Trivy DB
         uses: actions/cache@v4
         with:
@@ -103,7 +117,7 @@ jobs:
           restore-keys: |
             trivy-db-
 
-      - name: Run Trivy Security Scan (SARIF)
+      - name: Run Trivy Security Scan
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}
@@ -120,15 +134,12 @@ jobs:
           sarif_file: 'trivy-results-${{ matrix.service }}.sarif'
           category: 'trivy-${{ matrix.service }}'
 
-      # <--- (최적화) 중복 스캔 단계 제거
-      # - name: Run Trivy Scan (Table Format)
-      
-  # Job 3: EC2 배포 (Sleep 제거 및 동적 헬스 체크)
+  # Job 4: EC2 배포 및 검증 (동적 헬스 체크)
   deploy-to-ec2:
     name: Deploy to EC2
     needs: build-push
     runs-on: ubuntu-latest
-    if: ( (github.ref == 'refs/heads/main') || (github.ref == 'refs/heads/feat/ci-cd-test-deploy') ) && github.event_name == 'push'
+    if: github.event_name == 'push' && ( (github.ref == 'refs/heads/main') || (github.ref == 'refs/heads/feat/ci-cd-test-deploy') )
 
     steps:
       - name: Checkout repository
@@ -143,7 +154,6 @@ jobs:
           sed -i "s|image: softbank2025/user.*|image: softbank2025/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
           echo "📝 Updated docker-compose.yml"
 
-      # <--- (최적화) 'Verify Deployment' 잡을 통합하고, sleep 대신 동적 헬스 체크 루프 사용
       - name: Deploy and Verify via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -151,7 +161,7 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           script: |
-            set -e  # 에러 발생 시 즉시 중단
+            set -e
             
             echo "📂 Navigating to project directory..."
             cd /home/ubuntu/Raspberry
@@ -159,9 +169,9 @@ jobs:
             echo "🔄 Pulling latest code..."
             git pull origin ${{ github.ref_name }}
             
-            # === 스왑 메모리 설정 (유지) ===
+            # === 스왑 메모리 설정 ===
             if [ -f /swapfile ]; then
-              echo "ℹ️ Swap file /swapfile already exists."
+              echo "ℹ️ Swap file already exists."
             else
               echo "🚀 Creating 2G swap file..."
               sudo fallocate -l 2G /swapfile
@@ -186,54 +196,55 @@ jobs:
             echo "📥 Pulling latest Docker images..."
             docker-compose pull
 
-            echo "🛑 Stopping and removing corrupted containers..."
+            echo "🛑 Stopping containers..."
             docker-compose down
 
-            echo "🚀 Starting services with new images..."
+            echo "🚀 Starting services..."
             docker-compose up -d --remove-orphans
 
             echo "🧹 Cleaning up old images..."
             docker image prune -a -f
 
-            # <--- (최적화) 'sleep' 대신 동적 헬스 체크 시작 (최대 90초)
-            echo "⏳ Starting dynamic health check (Max 90s)..."
-            timeout=90
-            interval=5
+            # === 동적 헬스 체크 (최적화: 60초, 3초 간격) ===
+            echo "⏳ Starting health check (Max 60s)..."
+            timeout=60
+            interval=3
             elapsed=0
             
             while true; do
-              # 1. 유레카 서버 체크 (8761 포트)
+              eureka_ok=false
+              gateway_ok=false
+              
               if curl -sf http://localhost:8761 > /dev/null 2>&1; then
-                echo "  (✅ Eureka Server is UP)"
-                
-                # 2. 게이트웨이 체크 (8080 포트)
-                if curl -sf http://localhost:8080/actuator/health > /dev/null 2>&1; then
-                  echo "  (✅ Gateway is UP)"
-                  echo "🎉 All services are healthy!"
-                  echo "📊 Final Service Status:"
-                  docker-compose ps
-                  exit 0 # <--- 최종 성공
-                else
-                  echo "  (⏳ Waiting for Gateway... $elapsed/$timeout s)"
-                fi
-              else
-                echo "  (⏳ Waiting for Eureka Server... $elapsed/$timeout s)"
+                eureka_ok=true
+                echo "  ✅ Eureka Server is UP"
+              fi
+              
+              if curl -sf http://localhost:8080/actuator/health > /dev/null 2>&1; then
+                gateway_ok=true
+                echo "  ✅ Gateway is UP"
+              fi
+              
+              if [ "$eureka_ok" = true ] && [ "$gateway_ok" = true ]; then
+                echo "🎉 All critical services are healthy!"
+                echo "📊 Final Service Status:"
+                docker-compose ps
+                exit 0
               fi
 
               if [ $elapsed -ge $timeout ]; then
-                echo "❌ Deployment verification FAILED after $timeout seconds."
-                echo "--- Logs Eureka Server ---"
-                docker-compose logs --tail=50 eureka-server
-                echo "--- Logs Gateway ---"
-                docker-compose logs --tail=50 gateway
-                exit 1 # <--- 최종 실패
+                echo "❌ Health check FAILED after ${timeout}s"
+                echo "--- Eureka Server Logs ---"
+                docker-compose logs --tail=30 eureka-server
+                echo "--- Gateway Logs ---"
+                docker-compose logs --tail=30 gateway
+                exit 1
               fi
               
+              echo "  ⏳ Waiting... ($elapsed/${timeout}s)"
               sleep $interval
               elapsed=$((elapsed + interval))
             done
-
-      # <--- (최적화) 'Verify Deployment' 잡 삭제 (위 스크립트에 통합됨)
 
       - name: Notify Deployment Status
         if: always()
