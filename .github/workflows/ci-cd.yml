@@ -88,7 +88,7 @@ jobs:
           docker build \
             -t $IMAGE_NAME:${{ env.IMAGE_TAG }} \
             -t $IMAGE_NAME:latest \
-            -f ./${{ matrix.service }}/Dockerfile
+            -f ./${{ matrix.service }}/Dockerfile \
             .
           echo "✅ Image built: $IMAGE_NAME:${{ env.IMAGE_TAG }}"
 
