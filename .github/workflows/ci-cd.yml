@@ -108,9 +108,9 @@ jobs:
 
       - name: Update docker-compose.yml to use images
         run: |
-          sed -i "s|build:\s*context: \.|image: kwa06001/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/image: kwa06001\/server/! s|build:\s*./server|image: kwa06001/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/dockerfile: \.\/server\/Dockerfile/d" docker-compose.yml
+          sed -i "s|build:\s*context: \.|image: kwa06001/eureka-server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/image: kwa06001\/eureka-server/! s|build:\s*./eureka-server|image: kwa06001/eureka-server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/dockerfile: \.\/eureka-server\/Dockerfile/d" docker-compose.yml
           
           sed -i "s|build:\s*context: \.|image: kwa06001/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
           sed -i "/image: kwa06001\/gateway/! s|build:\s*./gateway|image: kwa06001/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
@@ -186,9 +186,9 @@ jobs:
           
           # [!!] EC2에서 직접 sed 실행 [!!]
           echo "🔧 Updating docker-compose.yml on EC2 to use images..."
-          sed -i "s|build:\s*context: \.|image: kwa06001/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/image: kwa06001\/server/! s|build:\s*./server|image: kwa06001/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/dockerfile: \.\/server\/Dockerfile/d" docker-compose.yml
+          sed -i "s|build:\s*context: \.|image: kwa06001/eureka-server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/image: kwa06001\/eureka-server/! s|build:\s*./eureka-server|image: kwa06001/eureka-server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/dockerfile: \.\/eureka-server\/Dockerfile/d" docker-compose.yml
           
           sed -i "s|build:\s*context: \.|image: kwa06001/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
           sed -i "/image: kwa06001\/gateway/! s|build:\s*./gateway|image: kwa06001/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
