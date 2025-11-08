@@ -256,7 +256,7 @@ jobs:
           
           echo "🔄 Pulling latest code..."
           git fetch origin 
-          git reset --hard origin/main
+          git reset --hard $GITHUB_SHA
           
           # 스왑 체크 (간소화)
           if ! sudo swapon --show | grep -q "/swapfile" && [ ! -f /swapfile ]; then
