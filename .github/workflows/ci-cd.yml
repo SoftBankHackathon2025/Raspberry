@@ -248,7 +248,7 @@ jobs:
 
       # AWS SSM으로 배포 검증
       - name: Verify Deployment
-        uses: aws-actions/amazon-ssm-send-command@v1
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           instance-ids: ${{ secrets.EC2_INSTANCE_ID }}
           command: |
