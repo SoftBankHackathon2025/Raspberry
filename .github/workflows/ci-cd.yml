@@ -224,12 +224,19 @@ jobs:
           docker-compose ps
           ''' # 💡 수정된 부분: COMMAND_SCRIPT와 같은 열에 위치
           
-          # 💡 AWS CLI send-command 호출
+          # 💡 COMMAND_SCRIPT의 내용을 JSON 형태로 이스케이프 처리
+          ESCAPED_SCRIPT=$(echo "$COMMAND_SCRIPT" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | awk '{printf "%s\\n", $0}')
+          
+          # 💡 SSM 명령 JSON 파일 생성 (commands는 string array여야 함)
+          echo '{"commands": ["'"$ESCAPED_SCRIPT"'"]}' > ssm_command_params.json
+          
+          # 💡 AWS CLI 호출 시 JSON 파일 직접 사용
           aws ssm send-command \
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
-            --parameters commands="$COMMAND_SCRIPT" \
-            --timeout-seconds 600 --output text
+            --cli-input-json file://ssm_command_params.json \
+            --timeout-seconds 600 \
+            --output text
 
       # AWS SSM으로 배포 검증
       - name: Verify Deployment
@@ -262,12 +269,19 @@ jobs:
           docker-compose ps
           '''
           
-          # 💡 수정된 부분: VERIFY_SCRIPT와 같은 열에 위치
+          # 💡 COMMAND_SCRIPT의 내용을 JSON 형태로 이스케이프 처리
+          ESCAPED_SCRIPT=$(echo "$VERIFY_SCRIPT" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | awk '{printf "%s\\n", $0}')
+          
+          # 💡 SSM 명령 JSON 파일 생성 (commands는 string array여야 함)
+          echo '{"commands": ["'"$ESCAPED_SCRIPT"'"]}' > ssm_verify_params.json
+          
+          # 💡 AWS CLI 호출 시 JSON 파일 직접 사용
           aws ssm send-command \
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
-            --parameters commands="$VERIFY_SCRIPT" \
-            --timeout-seconds 600 --output text
+            --cli-input-json file://ssm_verify_params.json \
+            --timeout-seconds 600 \
+            --output text
 
       # Slack 알림 (선택사항)
       - name: Notify Deployment Status
