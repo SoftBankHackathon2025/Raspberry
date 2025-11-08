@@ -225,7 +225,7 @@ jobs:
           ''' # 💡 수정된 부분: COMMAND_SCRIPT와 같은 열에 위치
           
           # 💡 AWS CLI send-command 호출
-          aws ssm send-command --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" --document-name "AWS-RunShellScript" --parameters "commands=$COMMAND_SCRIPT" --timeout-seconds 600 --output text
+          aws ssm send-command --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" --document-name "AWS-RunShellScript" --parameters commands="$COMMAND_SCRIPT" --timeout-seconds 600 --output text
 
       # AWS SSM으로 배포 검증
       - name: Verify Deployment
@@ -256,10 +256,10 @@ jobs:
           
           echo "📊 Service Status:"
           docker-compose ps
-          ''' 
+          '''
           
           # 💡 수정된 부분: VERIFY_SCRIPT와 같은 열에 위치
-                    aws ssm send-command --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" --document-name "AWS-RunShellScript" --parameters "commands=$VERIFY_SCRIPT" --timeout-seconds 300 --output text
+          aws ssm send-command --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" --document-name "AWS-RunShellScript" --parameters commands="$VERIFY_SCRIPT" --timeout-seconds 300 --output text
 
       # Slack 알림 (선택사항)
       - name: Notify Deployment Status
