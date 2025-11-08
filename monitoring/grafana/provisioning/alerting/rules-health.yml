@@ -17,7 +17,7 @@ groups:
               refId: A
               datasource: { type: prometheus, uid: DS_PROMETHEUS }
               expr: |
-                sum(
+                sum by(instance)(
                   (1 - min_over_time(up{instance="deploy:8080"}[2m]))
                   or on (instance) absent(up{instance="deploy:8080"})
                   or on (instance) (up{instance="deploy:8080"} * 0)
@@ -42,7 +42,9 @@ groups:
               expression: "$B > 0.5"
         for: 1m
         labels: { severity: "critical", application: "deploy" }
-        annotations: { summary: "deploy down or not being scraped" }
+        annotations:
+          summary: "deploy down or not being scraped"
+          description: "Prometheus could not scrape metrics or 'up' == 0 for deploy service"
         noDataState: OK
         execErrState: Alerting
 
@@ -58,7 +60,7 @@ groups:
               refId: A
               datasource: { type: prometheus, uid: DS_PROMETHEUS }
               expr: |
-                sum(
+                sum by(instance)(
                   (1 - min_over_time(up{instance="gateway:8080"}[2m]))
                   or on (instance) absent(up{instance="gateway:8080"})
                   or on (instance) (up{instance="gateway:8080"} * 0)
@@ -83,7 +85,9 @@ groups:
               expression: "$B > 0.5"
         for: 1m
         labels: { severity: "critical", application: "gateway" }
-        annotations: { summary: "gateway down or not being scraped" }
+        annotations:
+          summary: "gateway down or not being scraped"
+          description: "Prometheus could not scrape metrics or 'up' == 0 for gateway service"
         noDataState: OK
         execErrState: Alerting
 
@@ -99,7 +103,7 @@ groups:
               refId: A
               datasource: { type: prometheus, uid: DS_PROMETHEUS }
               expr: |
-                sum(
+                sum by(instance)(
                   (1 - min_over_time(up{instance="frontend:8080"}[2m]))
                   or on (instance) absent(up{instance="frontend:8080"})
                   or on (instance) (up{instance="frontend:8080"} * 0)
@@ -124,7 +128,9 @@ groups:
               expression: "$B > 0.5"
         for: 1m
         labels: { severity: "critical", application: "frontend" }
-        annotations: { summary: "frontend down or not being scraped" }
+        annotations:
+          summary: "frontend down or not being scraped"
+          description: "Prometheus could not scrape metrics or 'up' == 0 for frontend service"
         noDataState: OK
         execErrState: Alerting
 
@@ -140,7 +146,7 @@ groups:
               refId: A
               datasource: { type: prometheus, uid: DS_PROMETHEUS }
               expr: |
-                sum(
+                sum by(instance)(
                   (1 - min_over_time(up{instance="eureka-server:8761"}[2m]))
                   or on (instance) absent(up{instance="eureka-server:8761"})
                   or on (instance) (up{instance="eureka-server:8761"} * 0)
@@ -165,7 +171,9 @@ groups:
               expression: "$B > 0.5"
         for: 1m
         labels: { severity: "critical", application: "eureka" }
-        annotations: { summary: "eureka down or not being scraped" }
+        annotations:
+          summary: "eureka down or not being scraped"
+          description: "Prometheus could not scrape metrics or 'up' == 0 for eureka service"
         noDataState: OK
         execErrState: Alerting
 
@@ -181,7 +189,7 @@ groups:
               refId: A
               datasource: { type: prometheus, uid: DS_PROMETHEUS }
               expr: |
-                sum(
+                sum by(instance)(
                   (1 - min_over_time(up{instance="user:8080"}[2m]))
                   or on (instance) absent(up{instance="user:8080"})
                   or on (instance) (up{instance="user:8080"} * 0)
@@ -206,6 +214,8 @@ groups:
               expression: "$B > 0.5"
         for: 1m
         labels: { severity: "critical", application: "user" }
-        annotations: { summary: "user down or not being scraped" }
+        annotations:
+          summary: "user down or not being scraped"
+          description: "Prometheus could not scrape metrics or 'up' == 0 for user service"
         noDataState: OK
         execErrState: Alerting
