@@ -1,14 +1,22 @@
 name: CI/CD Pipeline for Microservices (Optimized)
 
+permissions:
+  contents: read
+  security-events: write   # SARIF 업로드용
+
 on:
   push:
     branches:
       - main
-      - 'feat/ci-cd-test-deploy'
   pull_request:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      env:
+        description: "Target environment"
+        required: false
+        default: "dev"
 
 permissions:
     contents: read
