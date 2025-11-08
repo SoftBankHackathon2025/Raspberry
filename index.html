@@ -209,6 +209,13 @@
           const workflowName = workflow_id.replace('.yml', '');
           const url = `https://api.github.com/repos/${owner}/${repo}/actions/workflows/${workflow_id}/dispatches`;
           
+          // 워크플로우별 입력 매개변수 설정
+          let inputs = {};
+          if (workflow_id === 'ci-cd.yml') {
+            inputs = { env: 'dev' }; // ci-cd.yml은 env 입력 필요
+          }
+          // code-scanning-improved.yml은 입력 매개변수 불필요 (빈 객체)
+          
           try {
             const res = await fetch(url, {
               method: 'POST',
@@ -220,7 +227,7 @@
               },
               body: JSON.stringify({ 
                 ref,
-                inputs: { env: 'dev' }
+                inputs
               })
             });
 
