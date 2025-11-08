@@ -1,0 +1,160 @@
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: core-metrics-rules
+    folder: "Spring Alerts"
+    interval: 1m
+    rules:
+      # Heap Used > 85%
+      - uid: heap_used_high
+        title: Heap Used > 85%
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: DS_PROMETHEUS
+            model:
+              refId: A
+              datasource: { type: prometheus, uid: DS_PROMETHEUS }
+              expr: |
+                sum by (application, instance) (jvm_memory_used_bytes{area="heap"})
+                  * 100
+                / sum by (application, instance) (jvm_memory_max_bytes{area="heap"})
+              instant: false
+          - refId: B
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: "-100"
+            model:
+              refId: B
+              type: reduce
+              datasource: { type: grafana, uid: "-100" }
+              expression: "A"
+              reducer: last
+          - refId: C
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: "-100"
+            model:
+              refId: C
+              type: math
+              datasource: { type: grafana, uid: "-100" }
+              expression: "$B > 85"
+        for: 2m
+        labels: { severity: "critical" }
+        annotations: { summary: "Heap usage high (>85%)" }
+        noDataState: OK
+        execErrState: Alerting
+
+      # HTTP 5xx rate > 1 req/s
+      - uid: http_5xx_rate_high
+        title: HTTP 5xx rate > 1
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: DS_PROMETHEUS
+            model:
+              refId: A
+              datasource: { type: prometheus, uid: DS_PROMETHEUS }
+              expr: |
+                sum by (application, instance) (
+                  rate(http_server_requests_seconds_count{status=~"5..", uri!~"/actuator/prometheus"}[1m])
+                )
+              instant: false
+          - refId: B
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: "-100"
+            model:
+              refId: B
+              type: reduce
+              datasource: { type: grafana, uid: "-100" }
+              expression: "A"
+              reducer: last
+          - refId: C
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: "-100"
+            model:
+              refId: C
+              type: math
+              datasource: { type: grafana, uid: "-100" }
+              expression: "$B > 1"
+        for: 2m
+        labels: { severity: "critical" }
+        annotations: { summary: "5xx errors > 1 req/s" }
+        noDataState: OK
+        execErrState: Alerting
+
+      # HTTP Latency p95 > 1.5s (requires histogram buckets)
+      - uid: http_latency_p95_high
+        title: HTTP p95 > 1.5s
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: DS_PROMETHEUS
+            model:
+              refId: A
+              datasource: { type: prometheus, uid: DS_PROMETHEUS }
+              expr: |
+                histogram_quantile(
+                  0.95,
+                  sum by (application, instance, le) (rate(http_server_requests_seconds_bucket[5m]))
+                )
+              instant: false
+          - refId: B
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: "-100"
+            model:
+              refId: B
+              type: reduce
+              datasource: { type: grafana, uid: "-100" }
+              expression: "A"
+              reducer: last
+          - refId: C
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: "-100"
+            model:
+              refId: C
+              type: math
+              datasource: { type: grafana, uid: "-100" }
+              expression: "$B > 1.5"     # ✅ p95 1.5초 초과
+        for: 3m
+        labels: { severity: "warning" }
+        annotations: { summary: "High latency (p95 > 1.5s)" }
+        noDataState: OK
+        execErrState: Alerting
+
+      # Process CPU > 80%
+      - uid: process_cpu_high
+        title: Process CPU > 80%
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: DS_PROMETHEUS
+            model:
+              refId: A
+              datasource: { type: prometheus, uid: DS_PROMETHEUS }
+              expr: process_cpu_usage
+              instant: false
+          - refId: B
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: "-100"
+            model:
+              refId: B
+              type: reduce
+              datasource: { type: grafana, uid: "-100" }
+              expression: "A"
+              reducer: last
+          - refId: C
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: "-100"
+            model:
+              refId: C
+              type: math
+              datasource: { type: grafana, uid: "-100" }
+              expression: "$B > 0.8"     # ✅ 80% 초과
+        for: 3m
+        labels: { severity: "warning" }
+        annotations: { summary: "High process CPU (>80%)" }
+        noDataState: OK
+        execErrState: Alerting

@@ -1,0 +1,211 @@
+apiVersion: 1
+groups:
+  - orgId: 1
+    name: health-check-rules
+    folder: "Spring Alerts"
+    interval: 1m
+    rules:
+      # deploy
+      - uid: health_deploy
+        title: Health DOWN - deploy
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 120, to: 0 }
+            datasourceUid: DS_PROMETHEUS
+            model:
+              refId: A
+              datasource: { type: prometheus, uid: DS_PROMETHEUS }
+              expr: |
+                sum(
+                  (1 - min_over_time(up{instance="deploy:8080"}[2m]))
+                  or on (instance) absent(up{instance="deploy:8080"})
+                  or on (instance) (up{instance="deploy:8080"} * 0)
+                )
+              instant: false
+          - refId: B
+            relativeTimeRange: { from: 120, to: 0 }
+            datasourceUid: "-100"
+            model:
+              refId: B
+              type: reduce
+              datasource: { type: grafana, uid: "-100" }
+              expression: "A"
+              reducer: last
+          - refId: C
+            relativeTimeRange: { from: 120, to: 0 }
+            datasourceUid: "-100"
+            model:
+              refId: C
+              type: math
+              datasource: { type: grafana, uid: "-100" }
+              expression: "$B > 0.5"
+        for: 1m
+        labels: { severity: "critical", application: "deploy" }
+        annotations: { summary: "deploy down or not being scraped" }
+        noDataState: OK
+        execErrState: Alerting
+
+      # gateway
+      - uid: health_gateway
+        title: Health DOWN - gateway
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 120, to: 0 }
+            datasourceUid: DS_PROMETHEUS
+            model:
+              refId: A
+              datasource: { type: prometheus, uid: DS_PROMETHEUS }
+              expr: |
+                sum(
+                  (1 - min_over_time(up{instance="gateway:8080"}[2m]))
+                  or on (instance) absent(up{instance="gateway:8080"})
+                  or on (instance) (up{instance="gateway:8080"} * 0)
+                )
+              instant: false
+          - refId: B
+            relativeTimeRange: { from: 120, to: 0 }
+            datasourceUid: "-100"
+            model:
+              refId: B
+              type: reduce
+              datasource: { type: grafana, uid: "-100" }
+              expression: "A"
+              reducer: last
+          - refId: C
+            relativeTimeRange: { from: 120, to: 0 }
+            datasourceUid: "-100"
+            model:
+              refId: C
+              type: math
+              datasource: { type: grafana, uid: "-100" }
+              expression: "$B > 0.5"
+        for: 1m
+        labels: { severity: "critical", application: "gateway" }
+        annotations: { summary: "gateway down or not being scraped" }
+        noDataState: OK
+        execErrState: Alerting
+
+      # frontend
+      - uid: health_frontend
+        title: Health DOWN - frontend
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 120, to: 0 }
+            datasourceUid: DS_PROMETHEUS
+            model:
+              refId: A
+              datasource: { type: prometheus, uid: DS_PROMETHEUS }
+              expr: |
+                sum(
+                  (1 - min_over_time(up{instance="frontend:8080"}[2m]))
+                  or on (instance) absent(up{instance="frontend:8080"})
+                  or on (instance) (up{instance="frontend:8080"} * 0)
+                )
+              instant: false
+          - refId: B
+            relativeTimeRange: { from: 120, to: 0 }
+            datasourceUid: "-100"
+            model:
+              refId: B
+              type: reduce
+              datasource: { type: grafana, uid: "-100" }
+              expression: "A"
+              reducer: last
+          - refId: C
+            relativeTimeRange: { from: 120, to: 0 }
+            datasourceUid: "-100"
+            model:
+              refId: C
+              type: math
+              datasource: { type: grafana, uid: "-100" }
+              expression: "$B > 0.5"
+        for: 1m
+        labels: { severity: "critical", application: "frontend" }
+        annotations: { summary: "frontend down or not being scraped" }
+        noDataState: OK
+        execErrState: Alerting
+
+      # eureka/server
+      - uid: health_eureka
+        title: Health DOWN - eureka
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 120, to: 0 }
+            datasourceUid: DS_PROMETHEUS
+            model:
+              refId: A
+              datasource: { type: prometheus, uid: DS_PROMETHEUS }
+              expr: |
+                sum(
+                  (1 - min_over_time(up{instance="eureka-server:8761"}[2m]))
+                  or on (instance) absent(up{instance="eureka-server:8761"})
+                  or on (instance) (up{instance="eureka-server:8761"} * 0)
+                )
+              instant: false
+          - refId: B
+            relativeTimeRange: { from: 120, to: 0 }
+            datasourceUid: "-100"
+            model:
+              refId: B
+              type: reduce
+              datasource: { type: grafana, uid: "-100" }
+              expression: "A"
+              reducer: last
+          - refId: C
+            relativeTimeRange: { from: 120, to: 0 }
+            datasourceUid: "-100"
+            model:
+              refId: C
+              type: math
+              datasource: { type: grafana, uid: "-100" }
+              expression: "$B > 0.5"
+        for: 1m
+        labels: { severity: "critical", application: "eureka" }
+        annotations: { summary: "eureka down or not being scraped" }
+        noDataState: OK
+        execErrState: Alerting
+
+      # user
+      - uid: health_user
+        title: Health DOWN - user
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 120, to: 0 }
+            datasourceUid: DS_PROMETHEUS
+            model:
+              refId: A
+              datasource: { type: prometheus, uid: DS_PROMETHEUS }
+              expr: |
+                sum(
+                  (1 - min_over_time(up{instance="user:8080"}[2m]))
+                  or on (instance) absent(up{instance="user:8080"})
+                  or on (instance) (up{instance="user:8080"} * 0)
+                )
+              instant: false
+          - refId: B
+            relativeTimeRange: { from: 120, to: 0 }
+            datasourceUid: "-100"
+            model:
+              refId: B
+              type: reduce
+              datasource: { type: grafana, uid: "-100" }
+              expression: "A"
+              reducer: last
+          - refId: C
+            relativeTimeRange: { from: 120, to: 0 }
+            datasourceUid: "-100"
+            model:
+              refId: C
+              type: math
+              datasource: { type: grafana, uid: "-100" }
+              expression: "$B > 0.5"
+        for: 1m
+        labels: { severity: "critical", application: "user" }
+        annotations: { summary: "user down or not being scraped" }
+        noDataState: OK
+        execErrState: Alerting
