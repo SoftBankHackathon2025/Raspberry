@@ -1,0 +1,20 @@
+apiVersion: 1
+contactPoints:
+  - orgId: 1
+    name: slack-critical
+    receivers:
+      - uid: cp-slack-critical
+        type: slack
+        disableResolveMessage: false
+        settings:
+          endpointUrl: ${SLACK_WEBHOOK_URL}
+          recipient: "#alert-critical"
+          title: '[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }}'
+          text: |
+            {{- range .Alerts }}
+            *Alert:* `{{ .Annotations.summary }}`
+            *Description:* {{ .Annotations.description }}
+            *Details:*
+            >• *Service:* `{{ .Labels.application }}`
+            >• *Instance:* `{{ .Labels.instance }}`
+            {{- end }}
