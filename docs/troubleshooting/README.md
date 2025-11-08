@@ -98,6 +98,21 @@ SoftBank Hackathon 2025 프로젝트에서 발생한 주요 이슈들과 해결 
 
 ---
 
+### [07. Spring Boot Config Data Import 문제](./07-config-import-issues.md)
+**문제:** `.env` 파일 import 설정으로 인한 애플리케이션 시작 실패
+
+**핵심 증상:**
+- `java.lang.IllegalStateException: Unable to load config data from '"classpath:.env"'`
+- ConfigDataLocationResolver 오류
+- 서비스 완전 시작 불가
+
+**해결책:**
+- 불필요한 `spring.config.import` 설정 제거
+- 다른 서비스들과 설정 일관성 유지
+- 민감 정보는 환경변수로 관리
+
+---
+
 ## 🚀 빠른 문제 해결 체크리스트
 
 프로젝트에서 문제가 발생했을 때 다음 순서로 확인하세요:
@@ -216,3 +231,4 @@ docker-compose logs gateway
 **마지막 업데이트:** 2024-11-08  
 **프로젝트:** SoftBank Hackathon 2025 - Raspberry  
 **아키텍처:** Spring Cloud 마이크로서비스 (Spring Boot 3.4.11 + Spring Cloud 2024.0.2)
+**최신 이슈:** Config Data Import 문제 해결 (07번 가이드 추가)
