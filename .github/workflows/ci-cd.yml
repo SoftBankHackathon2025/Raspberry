@@ -160,123 +160,134 @@ jobs:
         with:
           instance-ids: ${{ secrets.EC2_INSTANCE_ID }} # Secret: EC2 인스턴스 ID
           command: |
-            #!/bin/bash
-            set -e
-
-            echo "📂 Navigating to project directory..."
-            cd /home/ubuntu/Raspberry # EC2 내 프로젝트 경로
-
-            echo "🔧 Changing file ownership..."
-            sudo chown -R $USER:$USER .
-
-            echo "🔄 Pulling latest code..."
-            git pull origin ${{ github.ref_name }}
-            
-            # === 💡 스왑 메모리 설정 ===
-            if [ -f /swapfile ]; then
-              echo "ℹ️ Swap file /swapfile already exists."
-            else
-              echo "🚀 Creating 2G swap file..."
-              sudo fallocate -l 2G /swapfile
-              sudo chmod 600 /swapfile
-              sudo mkswap /swapfile
-            fi
-            if ! sudo swapon --show | grep -q '/swapfile'; then
-              echo "🟢 Activating swap..."
-              sudo swapon /swapfile
-            fi
-            if ! grep -q '/swapfile' /etc/fstab; then
-              echo "✏️ Adding swap to /etc/fstab..."
-              echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-            fi
-            echo "📊 Current swap status:"
-            sudo swapon --show
-            free -h
-            # === 스왑 메모리 설정 끝 ===
-
-            echo "🐳 Logging in to Docker Hub..."
-            echo "${{ secrets.DOCKERHUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
-
-            echo "🔧 Granting Docker socket permissions..."
-            sudo chmod 666 /var/run/docker.sock
-
-            echo "📥 Pulling latest Docker images..."
-            # EC2 서버의 git pull로 docker-compose.yml이 덮어써지기 전에 
-            # CI Runner에서 수정한 docker-compose.yml을 EC2로 복사해야 합니다.
-            # 이 방식 대신, EC2에서 직접 sed를 실행하는 것이 더 낫습니다.
-            # 스크립트를 수정합니다.
-
-            # [!!] EC2에서 직접 sed 실행 [!!]
-            echo "🔧 Updating docker-compose.yml on EC2 to use images..."
-            sed -i "s|build:\s*context: \.|image: kwa06001/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-            sed -i "/image: kwa06001\/server/! s|build:\s*./server|image: kwa06001/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-            sed -i "/dockerfile: \.\/server\/Dockerfile/d" docker-compose.yml
-            
-            sed -i "s|build:\s*context: \.|image: kwa06001/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-            sed -i "/image: kwa06001\/gateway/! s|build:\s*./gateway|image: kwa06001/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-            sed -i "/dockerfile: \.\/gateway\/Dockerfile/d" docker-compose.yml
-
-            sed -i "s|build:\s*context: \.|image: kwa06001/fe:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-            sed -i "/image: kwa06001\/fe/! s|build:\s*./fe|image: kwa06001/fe:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-            sed -i "/dockerfile: \.\/fe\/Dockerfile/d" docker-compose.yml
-            
-            sed -i "s|build:\s*context: \.|image: kwa06001/deploy:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-            sed -i "/image: kwa06001\/deploy/! s|build:\s*./deploy|image: kwa06001/deploy:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-            sed -i "/dockerfile: \.\/deploy\/Dockerfile/d" docker-compose.yml
-            
-            sed -i "s|build:\s*context: \.|image: kwa06001/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-            sed -i "/image: kwa06001\/user/! s|build:\s*./user|image: kwa06001/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-            sed -i "/dockerfile: \.\/user\/Dockerfile/d" docker-compose.yml
-
-            echo "📥 Pulling latest Docker images from Docker Hub..."
-            docker-compose pull
-
-            echo "🛑 Stopping and removing corrupted containers..."
-            docker-compose down
-
-            echo "🚀 Starting services with new images..."
-            docker-compose up -d --remove-orphans
-
-            echo "🧹 Cleaning up old images..."
-            docker image prune -a -f
-
-            echo "⏳ Waiting for services to start..."
-            sleep 15
-
-            echo "✅ Deployment completed!"
-            docker-compose ps
+          # 💡 명령어 전체를 변수에 저장하여 SSM Run Command의 'commands' 인수에 전달합니다.
+          COMMAND_SCRIPT='''
+          #!/bin/bash
+          set -e
+          
+          echo "📂 Navigating to project directory..."
+          cd /home/ubuntu/Raspberry # EC2 내 프로젝트 경로
+          
+          echo "🔧 Changing file ownership..."
+          sudo chown -R $USER:$USER .
+          
+          echo "🔄 Pulling latest code..."
+          git pull origin ${{ github.ref_name }}
+          
+          # === 💡 스왑 메모리 설정 === (이하 원본 스크립트 내용 유지)
+          if [ -f /swapfile ]; then
+            echo "ℹ️ Swap file /swapfile already exists."
+          else
+            echo "🚀 Creating 2G swap file..."
+            sudo fallocate -l 2G /swapfile
+            sudo chmod 600 /swapfile
+            sudo mkswap /swapfile
+          fi
+          if ! sudo swapon --show | grep -q "/swapfile"; then
+            echo "🟢 Activating swap..."
+            sudo swapon /swapfile
+          fi
+          if ! grep -q "/swapfile" /etc/fstab; then
+            echo "✏️ Adding swap to /etc/fstab..."
+            echo "/swapfile none swap sw 0 0" | sudo tee -a /etc/fstab
+          fi
+          echo "📊 Current swap status:"
+          sudo swapon --show
+          free -h
+          # === 스왑 메모리 설정 끝 ===
+          
+          echo "🐳 Logging in to Docker Hub..."
+          echo "${{ secrets.DOCKERHUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+          
+          echo "🔧 Granting Docker socket permissions..."
+          sudo chmod 666 /var/run/docker.sock
+          
+          # [!!] EC2에서 직접 sed 실행 [!!]
+          echo "🔧 Updating docker-compose.yml on EC2 to use images..."
+          sed -i "s|build:\s*context: \.|image: kwa06001/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/image: kwa06001\/server/! s|build:\s*./server|image: kwa06001/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/dockerfile: \.\/server\/Dockerfile/d" docker-compose.yml
+          
+          sed -i "s|build:\s*context: \.|image: kwa06001/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/image: kwa06001\/gateway/! s|build:\s*./gateway|image: kwa06001/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/dockerfile: \.\/gateway\/Dockerfile/d" docker-compose.yml
+          
+          sed -i "s|build:\s*context: \.|image: kwa06001/fe:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/image: kwa06001\/fe/! s|build:\s*./fe|image: kwa06001/fe:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/dockerfile: \.\/fe\/Dockerfile/d" docker-compose.yml
+          
+          sed -i "s|build:\s*context: \.|image: kwa06001/deploy:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/image: kwa06001\/deploy/! s|build:\s*./deploy|image: kwa06001/deploy:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/dockerfile: \.\/deploy\/Dockerfile/d" docker-compose.yml
+          
+          sed -i "s|build:\s*context: \.|image: kwa06001/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/image: kwa06001\/user/! s|build:\s*./user|image: kwa06001/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/dockerfile: \.\/user\/Dockerfile/d" docker-compose.yml
+          
+          echo "📥 Pulling latest Docker images from Docker Hub..."
+          docker-compose pull
+          
+          echo "🛑 Stopping and removing corrupted containers..."
+          docker-compose down
+          
+          echo "🚀 Starting services with new images..."
+          docker-compose up -d --remove-orphans
+          
+          echo "🧹 Cleaning up old images..."
+          docker image prune -a -f
+          
+          echo "⏳ Waiting for services to start..."
+          sleep 15
+          
+          echo "✅ Deployment completed!"
+          docker-compose ps
+          '''
+          
+          # 💡 AWS CLI send-command 호출
+          aws ssm send-command \
+            --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --parameters commands="$COMMAND_SCRIPT" \
+            --timeout-seconds 600 \
+            --output text
 
       # AWS SSM으로 배포 검증
       - name: Verify Deployment
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          instance-ids: ${{ secrets.EC2_INSTANCE_ID }}
-          command: |
-            #!/bin/bash
-            set -e
+        run: |
+          VERIFY_SCRIPT='''
+          #!/bin/bash
+          set -e
 
-            echo "⏳ Waiting for services to initialize..."
-            sleep 50
+          echo "⏳ Waiting for services to initialize..."
+          sleep 50
 
-            cd /home/ubuntu/Raspberry
+          cd /home/ubuntu/Raspberry
 
-            echo "🔍 Checking service health..."
+          echo "🔍 Checking service health..."
 
-            if curl -sf http://localhost:8761 > /dev/null 2>&1; then
-              echo "✅ Eureka Server is healthy"
-            else
-              echo "❌ Eureka Server health check failed"
-              exit 1
-            fi
+          if curl -sf http://localhost:8761 > /dev/null 2>&1; then
+            echo "✅ Eureka Server is healthy"
+          else
+            echo "❌ Eureka Server health check failed"
+            exit 1
+          fi
 
-            if curl -sf http://localhost:8080/actuator/health > /dev/null 2>&1; then
-              echo "✅ Gateway is healthy"
-            else
-              echo "⚠️ Gateway health check failed"
-            fi
+          if curl -sf http://localhost:8080/actuator/health > /dev/null 2>&1; then
+            echo "✅ Gateway is healthy"
+          else
+            echo "⚠️ Gateway health check failed"
+          fi
 
-            echo "📊 Service Status:"
-            docker-compose ps
+          echo "📊 Service Status:"
+          docker-compose ps
+          '''
+          
+          aws ssm send-command \
+            --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --parameters commands="$VERIFY_SCRIPT" \
+            --timeout-seconds 300 \
+            --output text
 
       # Slack 알림 (선택사항)
       - name: Notify Deployment Status
