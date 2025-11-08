@@ -18,9 +18,9 @@ env:
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:
-  # Job 1: 전체 프로젝트 빌드 및 테스트 (변경 없음)
-  build-and-test:
-    name: Build and Test All Services
+  # Job 1: 빌드 단계를 제거하고, 테스트만 수행
+  test:
+    name: Run Unit Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -36,28 +36,16 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
-      - name: Build and Test All Services
-        run: ./gradlew build -x test
-
+      # 'build' 단계를 제거하고 'test'만 실행
       - name: Run Tests
         run: ./gradlew test
         
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-artifacts
-          path: |
-            server/build/libs/*.jar
-            gateway/build/libs/*.jar
-            fe/build/libs/*.jar
-            deploy/build/libs/*.jar
-            user/build/libs/*.jar
-          retention-days: 1
+      # '.jar'를 업로드하는 아티팩트 단계 제거
 
-  # Job 2: 서비스별 Docker 이미지 빌드 및 스캔 (변경 없음)
+  # Job 2: Docker가 소스 코드를 직접 빌드하도록 수정
   docker-build-scan-push:
     name: Docker Build, Scan & Push
-    needs: build-and-test
+    needs: test # Job 1의 이름이 'test'로 변경되었으므로 'needs'도 수정
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -68,10 +56,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Download Build Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-artifacts
+      # '.jar'를 다운로드하는 아티팩트 단계 제거
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -82,16 +67,17 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # [!!] Docker 빌드 컨텍스트를 '.' (루트)로 수정 [!!]
       - name: Build Docker Image for ${{ matrix.service }}
         run: |
           IMAGE_NAME="${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}"
           docker build \
             -t $IMAGE_NAME:${{ env.IMAGE_TAG }} \
             -t $IMAGE_NAME:latest \
-            -f ./${{ matrix.service }}/Dockerfile
-            .
-          echo "✅ Image built: $IMAGE_NAME:${{ env.IMAGE_TAG }}"
+            -f ./${{ matrix.service }}/Dockerfile \
+            .  # <-- 빌드 컨텍스트를 프로젝트 루트로 변경
 
+      # Trivy 스캔 (이하 동일)
       - name: Run Trivy Security Scan
         uses: aquasecurity/trivy-action@master
         with:
@@ -133,37 +119,52 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # docker-compose.yml 업데이트 (이미지 태그 변경)
-      - name: Update docker-compose.yml with new image tags
+      # [!!] sed 명령어를 'build:'를 'image:'로 바꾸도록 수정 [!!]
+      - name: Update docker-compose.yml to use images
         run: |
-          sed -i "s|image: softbank2025/server.*|image: softbank2025/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "s|image: softbank2025/gateway.*|image: softbank2025/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "s|image: softbank2025/fe.*|image: softbank2025/fe:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "s|image: softbank2025/deploy.*|image: softbank2025/deploy:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "s|image: softbank2025/user.*|image: softbank2025/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          echo "📝 Updated docker-compose.yml:"
+          # docker-compose.yml의 'build:' 관련 라인을 'image:'로 교체
+          sed -i "s|build:\s*context: \.|image: softbank2025/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/image: softbank2025\/server/! s|build:\s*./server|image: softbank2025/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/dockerfile: \.\/server\/Dockerfile/d" docker-compose.yml
+          
+          sed -i "s|build:\s*context: \.|image: softbank2025/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/image: softbank2025\/gateway/! s|build:\s*./gateway|image: softbank2025/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/dockerfile: \.\/gateway\/Dockerfile/d" docker-compose.yml
+
+          sed -i "s|build:\s*context: \.|image: softbank2025/fe:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/image: softbank2025\/fe/! s|build:\s*./fe|image: softbank2025/fe:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/dockerfile: \.\/fe\/Dockerfile/d" docker-compose.yml
+          
+          sed -i "s|build:\s*context: \.|image: softbank2025/deploy:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/image: softbank2025\/deploy/! s|build:\s*./deploy|image: softbank2025/deploy:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/dockerfile: \.\/deploy\/Dockerfile/d" docker-compose.yml
+          
+          sed -i "s|build:\s*context: \.|image: softbank2025/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/image: softbank2025\/user/! s|build:\s*./user|image: softbank2025/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/dockerfile: \.\/user\/Dockerfile/d" docker-compose.yml
+          
+          echo "📝 Updated docker-compose.yml (to use images instead of build):"
           cat docker-compose.yml
 
-      # [!!] SSH 방식 대신 AWS 자격증명 설정 [!!]
+      # AWS 자격증명 설정
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }} # 예: ap-northeast-2
+          aws-region: ${{ secrets.AWS_REGION }}
 
-      # [!!] SSH 방식 대신 AWS SSM Run Command로 배포 [!!]
+      # AWS SSM Run Command로 배포
       - name: Deploy to EC2 via AWS SSM
-        uses: aws-actions/aws-ssm-send-command@v1
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          instance-ids: ${{ secrets.EC2_INSTANCE_ID }} # GitHub Secret에 EC2 인스턴스 ID(i-...)를 등록해야 합니다.
+          instance-ids: ${{ secrets.EC2_INSTANCE_ID }} # Secret: EC2 인스턴스 ID
           command: |
             #!/bin/bash
-            set -e  # 에러 발생 시 즉시 중단
+            set -e
 
-            # EC2 인스턴스 내의 실제 프로젝트 경로로 수정하세요.
             echo "📂 Navigating to project directory..."
-            cd /home/ubuntu/Raspberry
+            cd /home/ubuntu/Raspberry # EC2 내 프로젝트 경로
 
             echo "🔧 Changing file ownership..."
             sudo chown -R $USER:$USER .
@@ -171,9 +172,9 @@ jobs:
             echo "🔄 Pulling latest code..."
             git pull origin ${{ github.ref_name }}
             
-            # === 💡 스왑 메모리 설정 시작 ===
+            # === 💡 스왑 메모리 설정 ===
             if [ -f /swapfile ]; then
-              echo "ℹ️ Swap file /swapfile already exists. Skipping creation."
+              echo "ℹ️ Swap file /swapfile already exists."
             else
               echo "🚀 Creating 2G swap file..."
               sudo fallocate -l 2G /swapfile
@@ -185,7 +186,7 @@ jobs:
               sudo swapon /swapfile
             fi
             if ! grep -q '/swapfile' /etc/fstab; then
-              echo "✏️ Adding swap to /etc/fstab for persistence..."
+              echo "✏️ Adding swap to /etc/fstab..."
               echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
             fi
             echo "📊 Current swap status:"
@@ -200,6 +201,34 @@ jobs:
             sudo chmod 666 /var/run/docker.sock
 
             echo "📥 Pulling latest Docker images..."
+            # EC2 서버의 git pull로 docker-compose.yml이 덮어써지기 전에 
+            # CI Runner에서 수정한 docker-compose.yml을 EC2로 복사해야 합니다.
+            # 이 방식 대신, EC2에서 직접 sed를 실행하는 것이 더 낫습니다.
+            # 스크립트를 수정합니다.
+
+            # [!!] EC2에서 직접 sed 실행 [!!]
+            echo "🔧 Updating docker-compose.yml on EC2 to use images..."
+            sed -i "s|build:\s*context: \.|image: softbank2025/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+            sed -i "/image: softbank2025\/server/! s|build:\s*./server|image: softbank2025/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+            sed -i "/dockerfile: \.\/server\/Dockerfile/d" docker-compose.yml
+            
+            sed -i "s|build:\s*context: \.|image: softbank2025/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+            sed -i "/image: softbank2025\/gateway/! s|build:\s*./gateway|image: softbank2025/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+            sed -i "/dockerfile: \.\/gateway\/Dockerfile/d" docker-compose.yml
+
+            sed -i "s|build:\s*context: \.|image: softbank2025/fe:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+            sed -i "/image: softbank2025\/fe/! s|build:\s*./fe|image: softbank2025/fe:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+            sed -i "/dockerfile: \.\/fe\/Dockerfile/d" docker-compose.yml
+            
+            sed -i "s|build:\s*context: \.|image: softbank2025/deploy:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+            sed -i "/image: softbank2025\/deploy/! s|build:\s*./deploy|image: softbank2025/deploy:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+            sed -i "/dockerfile: \.\/deploy\/Dockerfile/d" docker-compose.yml
+            
+            sed -i "s|build:\s*context: \.|image: softbank2025/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+            sed -i "/image: softbank2025\/user/! s|build:\s*./user|image: softbank2025/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+            sed -i "/dockerfile: \.\/user\/Dockerfile/d" docker-compose.yml
+
+            echo "📥 Pulling latest Docker images from Docker Hub..."
             docker-compose pull
 
             echo "🛑 Stopping and removing corrupted containers..."
@@ -217,9 +246,9 @@ jobs:
             echo "✅ Deployment completed!"
             docker-compose ps
 
-      # [!!] SSH 방식 대신 AWS SSM으로 배포 검증 [!!]
+      # AWS SSM으로 배포 검증
       - name: Verify Deployment
-        uses: aws-actions/aws-ssm-send-command@v1
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           instance-ids: ${{ secrets.EC2_INSTANCE_ID }}
           command: |
@@ -233,7 +262,6 @@ jobs:
 
             echo "🔍 Checking service health..."
 
-            # Eureka Server 체크
             if curl -sf http://localhost:8761 > /dev/null 2>&1; then
               echo "✅ Eureka Server is healthy"
             else
@@ -241,7 +269,6 @@ jobs:
               exit 1
             fi
 
-            # Gateway 체크
             if curl -sf http://localhost:8080/actuator/health > /dev/null 2>&1; then
               echo "✅ Gateway is healthy"
             else
@@ -251,7 +278,7 @@ jobs:
             echo "📊 Service Status:"
             docker-compose ps
 
-      # Slack 알림 (변경 없음)
+      # Slack 알림 (선택사항)
       - name: Notify Deployment Status
         if: always()
         run: |
