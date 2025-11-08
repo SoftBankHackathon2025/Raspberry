@@ -5,6 +5,12 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-webflux'
 	implementation 'org.springframework.cloud:spring-cloud-starter-gateway'
 	implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
+	implementation 'org.springframework.cloud:spring-cloud-starter-circuitbreaker-reactor-resilience4j'
+
 	testImplementation 'io.projectreactor:reactor-test'
     implementation 'io.micrometer:micrometer-registry-prometheus'
+	testImplementation 'org.springframework.cloud:spring-cloud-starter-contract-stub-runner'
+	testImplementation 'org.testcontainers:junit-jupiter:1.17.6'
+	testImplementation 'org.testcontainers:testcontainers:1.17.6'
+	testImplementation 'com.github.tomakehurst:wiremock-jre8:2.35.0'
 }

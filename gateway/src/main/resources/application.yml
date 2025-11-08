@@ -1,0 +1,204 @@
+spring:
+  application:
+    name: gateway
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+          include-expression: "serviceId.matches('user|deploy|fe')"
+      routes:
+        # User Service Routes
+        - id: user-service
+          uri: lb://user
+          predicates:
+            - Path=/user/**, /users/**
+          filters:
+            - name: StripPrefix
+              args:
+                parts: 1
+            - name: Retry
+              args:
+                retries: 3
+                statuses: BAD_GATEWAY,GATEWAY_TIMEOUT
+                backoff:
+                  firstBackoff: 50ms
+                  maxBackoff: 500ms
+                  factor: 2
+        
+        # Deploy Service Routes  
+        - id: deploy-service
+          uri: lb://deploy
+          predicates:
+            - Path=/deploy/**, /deployments/**
+          filters:
+            - name: StripPrefix
+              args:
+                parts: 1
+            - name: Retry
+              args:
+                retries: 3
+                statuses: BAD_GATEWAY,GATEWAY_TIMEOUT
+                backoff:
+                  firstBackoff: 50ms
+                  maxBackoff: 500ms
+                  factor: 2
+        
+        # Frontend Service Routes
+        - id: fe-service
+          uri: lb://fe
+          predicates:
+            - Path=/fe/**, /frontend/**
+          filters:
+            - name: StripPrefix
+              args:
+                parts: 1
+            - name: AddResponseHeader
+              args:
+                name: X-Frontend-Service
+                value: fe
+        
+        # Default Route to Frontend
+        - id: default-route
+          uri: lb://fe
+          predicates:
+            - Path=/**
+          order: 1000
+      
+      # Global filters
+      default-filters:
+        - name: AddRequestHeader
+          args:
+            name: X-Gateway-Source
+            value: raspberry-gateway
+        - name: AddResponseHeader
+          args:
+            name: X-Gateway-Timestamp
+            value: "gateway-response"
+      
+      # Global timeouts and settings
+      httpclient:
+        connect-timeout: 5000
+        response-timeout: 30s
+        pool:
+          type: elastic
+          max-idle-time: 15s
+          max-life-time: 60s
+        ssl:
+          use-insecure-trust-manager: false
+
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+# Eureka Client Configuration
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eureka-server:8761/eureka/
+    registry-fetch-interval-seconds: 5
+    instance-info-replication-interval-seconds: 5
+    initial-instance-info-replication-interval-seconds: 5
+    eureka-server-connect-timeout-seconds: 5
+    eureka-server-read-timeout-seconds: 5
+    eureka-connection-idle-timeout-seconds: 10
+    heartbeat-executor-thread-pool-size: 2
+    cache-refresh-executor-thread-pool-size: 2
+    fetch-registry: true
+    register-with-eureka: true
+  instance:
+    prefer-ip-address: true
+    lease-renewal-interval-in-seconds: 5
+    lease-expiration-duration-in-seconds: 15
+    instance-id: ${spring.application.name}:${spring.application.instance_id:${random.value}}
+    metadata-map:
+      zone: primary
+      version: "1.0.0"
+      environment: "${spring.profiles.active:default}"
+
+# Management and Actuator Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, gateway, refresh, routes, filters, globalfilters, prometheus, metrics
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+      show-components: always
+    gateway:
+      enabled: true
+    prometheus:
+      enabled: true
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+  health:
+    circuitbreakers:
+      enabled: true
+  info:
+    env:
+      enabled: true
+    build:
+      enabled: true
+    git:
+      enabled: true
+
+# Logging Configuration
+logging:
+  level:
+    org.springframework.cloud.gateway: INFO
+    org.springframework.cloud.netflix.eureka: INFO
+    com.netflix.discovery: INFO
+    reactor.netty.http.client: DEBUG
+    org.springframework.web.reactive: DEBUG
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level [%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n"
+
+# Custom Gateway Properties
+gateway:
+  security:
+    cors:
+      enabled: true
+      allowed-origins: "*"
+      allowed-methods: "GET,POST,PUT,DELETE,OPTIONS"
+      allowed-headers: "*"
+      allow-credentials: false
+  monitoring:
+    metrics:
+      enabled: true
+    circuit-breaker:
+      enabled: true
+      failure-rate-threshold: 50
+      wait-duration-in-open-state: 60s
+      sliding-window-size: 10
+
+---
+# Development Profile
+spring:
+  config:
+    activate:
+      on-profile: dev
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+
+---
+# Production Profile  
+spring:
+  config:
+    activate:
+      on-profile: prod
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eureka-server:8761/eureka/
+logging:
+  level:
+    reactor.netty.http.client: INFO
+    org.springframework.web.reactive: INFO

@@ -12,12 +12,6 @@ services:
       - eureka.client.fetch-registry=false
       - eureka.server.wait-time-in-ms-when-sync-empty=0
       - eureka.server.enable-self-preservation=false
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health", "||", "exit", "1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 40s
 
   gateway:
     build: ./gateway
@@ -25,8 +19,7 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      eureka-server:
-        condition: service_healthy
+      - eureka-server
     networks:
       - microservices
     environment:
@@ -39,8 +32,7 @@ services:
     ports:
       - "8081:8081"
     depends_on:
-      eureka-server:
-        condition: service_healthy
+      - eureka-server
     networks:
       - microservices
     environment:
@@ -53,8 +45,7 @@ services:
     ports:
       - "8082:8082"
     depends_on:
-      eureka-server:
-        condition: service_healthy
+      - eureka-server
     networks:
       - microservices
     environment:
@@ -67,8 +58,7 @@ services:
     ports:
       - "8083:8083"
     depends_on:
-      eureka-server:
-        condition: service_healthy
+      - eureka-server
     networks:
       - microservices
     environment:
