@@ -113,11 +113,20 @@ jobs:
           sed -i '/context:/d' docker-compose.yml
           sed -i '/dockerfile:/d' docker-compose.yml
           
-          # image 태그 업데이트
+          # -- Spring Microservices --
+          # eureka-server (서비스 이름: server가 아니라 eureka-server입니다)
           sed -i "/eureka-server:/a\    image: kwa06001/eureka-server:${{ env.IMAGE_TAG }}" docker-compose.yml
+          
+          # gateway 
           sed -i "/gateway:/a\    image: kwa06001/gateway:${{ env.IMAGE_TAG }}" docker-compose.yml
-          sed -i "/fe:/a\    image: kwa06001/fe:${{ env.IMAGE_TAG }}" docker-compose.yml
+          
+          # frontend (도커 컴포즈 파일에서 이름이 'frontend'로 정의되어 있습니다.)
+          sed -i "/frontend:/a\    image: kwa06001/frontend:${{ env.IMAGE_TAG }}" docker-compose.yml
+          
+          # deploy
           sed -i "/deploy:/a\    image: kwa06001/deploy:${{ env.IMAGE_TAG }}" docker-compose.yml
+          
+          # user
           sed -i "/user:/a\    image: kwa06001/user:${{ env.IMAGE_TAG }}" docker-compose.yml
           
           echo "📝 Updated docker-compose.yml (to use images instead of build):"
@@ -183,11 +192,20 @@ jobs:
           sed -i '/context:/d' docker-compose.yml
           sed -i '/dockerfile:/d' docker-compose.yml
 
-          # 💡 image 태그 업데이트 (잔여 image 태그에 대해 적용)
+          # -- Spring Microservices --
+          # eureka-server (서비스 이름: server가 아니라 eureka-server입니다)
           sed -i "/eureka-server:/a\    image: kwa06001/eureka-server:${{ env.IMAGE_TAG }}" docker-compose.yml
+          
+          # gateway 
           sed -i "/gateway:/a\    image: kwa06001/gateway:${{ env.IMAGE_TAG }}" docker-compose.yml
-          sed -i "/fe:/a\    image: kwa06001/fe:${{ env.IMAGE_TAG }}" docker-compose.yml
+          
+          # frontend (도커 컴포즈 파일에서 이름이 'frontend'로 정의되어 있습니다.)
+          sed -i "/frontend:/a\    image: kwa06001/frontend:${{ env.IMAGE_TAG }}" docker-compose.yml
+          
+          # deploy
           sed -i "/deploy:/a\    image: kwa06001/deploy:${{ env.IMAGE_TAG }}" docker-compose.yml
+          
+          # user
           sed -i "/user:/a\    image: kwa06001/user:${{ env.IMAGE_TAG }}" docker-compose.yml
           
           echo "📥 Pulling latest Docker images from Docker Hub..."
