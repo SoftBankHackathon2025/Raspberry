@@ -1,6 +1,6 @@
 services:
   eureka-server:
-    image: softbank2025/server
+    build: ./server
     container_name: eureka-server
     ports:
       - "8761:8761"
@@ -10,54 +10,69 @@ services:
       - eureka.client.register-with-eureka=false
       - eureka.client.fetch-registry=false
       - eureka.server.wait-time-in-ms-when-sync-empty=0
+      - eureka.server.enable-self-preservation=false
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health", "||", "exit", "1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
 
   gateway:
-    image: softbank2025/gateway
+    build: ./gateway
     container_name: gateway
     ports:
       - "8080:8080"
     depends_on:
-      - eureka-server
+      eureka-server:
+        condition: service_healthy
     networks:
       - microservices
     environment:
       - eureka.client.service-url.defaultZone=http://eureka-server:8761/eureka/
+    restart: unless-stopped
 
   frontend:
-    image: softbank2025/fe
+    build: ./fe
     container_name: frontend
     ports:
       - "8081:8081"
     depends_on:
-      - eureka-server
+      eureka-server:
+        condition: service_healthy
     networks:
       - microservices
     environment:
       - eureka.client.service-url.defaultZone=http://eureka-server:8761/eureka/
+    restart: unless-stopped
 
   deploy:
-    image: softbank2025/deploy
+    build: ./deploy
     container_name: deploy
     ports:
       - "8082:8082"
     depends_on:
-      - eureka-server
+      eureka-server:
+        condition: service_healthy
     networks:
       - microservices
     environment:
       - eureka.client.service-url.defaultZone=http://eureka-server:8761/eureka/
+    restart: unless-stopped
 
   user:
-    image: softbank2025/user
+    build: ./user
     container_name: user
     ports:
       - "8083:8083"
     depends_on:
-      - eureka-server
+      eureka-server:
+        condition: service_healthy
     networks:
       - microservices
     environment:
       - eureka.client.service-url.defaultZone=http://eureka-server:8761/eureka/
+    restart: unless-stopped
 
 networks:
   microservices:
