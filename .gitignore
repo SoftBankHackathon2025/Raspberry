@@ -101,7 +101,7 @@ nohup.out
 # ------------------------------
 # Archives
 # ------------------------------
-# *.jar
+*.jar
 *.war
 *.nar
 *.ear
@@ -128,16 +128,16 @@ jacoco/
 secrets/
 
 # Configuration files (exclude all, include examples explicitly if needed)
-## application.properties
-## application*.properties
+application.properties
+application*.properties
 application.yml
 application*.yml
 config/application*.yml
 config/application*.properties
-!src/main/resources/application*.yml
-## !src/main/resources/application*.properties
-## **/application.properties
-## **/application*.properties
+src/main/resources/application*.yml
+src/main/resources/application*.properties
+**/application.properties
+**/application*.properties
 **/application.yml
 **/application*.yml
 
@@ -193,9 +193,3 @@ yarn-error.log*
 # 
 jdk-17.0.12+7/
 CLAUDE.md
-
-# Exception: Include application.yml files in src/main/resources
-!src/main/resources/application.yml
-!src/main/resources/application-*.yml
-!**/src/main/resources/application.yml
-!**/src/main/resources/application-*.yml

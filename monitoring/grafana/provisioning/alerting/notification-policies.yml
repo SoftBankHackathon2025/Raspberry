@@ -1,0 +1,10 @@
+apiVersion: 1
+policies:
+  - orgId: 1
+    receiver: slack-critical
+    group_by: ["alertname", "application", "instance"]
+    repeat_interval: 1h
+    routes:
+      - receiver: slack-critical
+        object_matchers:
+          - ["severity", "=", "critical"]
