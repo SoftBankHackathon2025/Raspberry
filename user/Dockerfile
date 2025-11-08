@@ -1,12 +1,23 @@
-FROM eclipse-temurin:17-jdk-focal
-
-# Install curl for healthcheck
-RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
-
+FROM eclipse-temurin:17-jdk-focal AS builder
 WORKDIR /app
 
-# Copy the fat jar (not the plain jar)
-COPY build/libs/*-SNAPSHOT.jar app.jar
+COPY gradlew .
+COPY gradle ./gradle
+COPY build.gradle .
+COPY settings.gradle .
+
+COPY server ./server
+COPY gateway ./gateway
+COPY fe ./fe
+COPY deploy ./deploy
+COPY user ./user
+
+RUN chmod +x ./gradlew && ./gradlew :user:bootJar -x test
+
+FROM eclipse-temurin:17-jre-focal
+WORKDIR /app
+
+COPY --from=builder /app/user/build/libs/*.jar app.jar
 
 EXPOSE 8083
 

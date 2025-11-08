@@ -1,9 +1,10 @@
-name: CI/CD Pipeline for Microservices
+name: CI/CD Pipeline for Microservices (Optimized)
 
 on:
   push:
     branches:
       - main
+      - 'feat/ci-cd-test-deploy'
   pull_request:
     branches:
       - main
@@ -14,14 +15,17 @@ permissions:
     security-events: write
 
 env:
-  DOCKER_REGISTRY: softbank2025  # DockerHub username
+  DOCKER_REGISTRY: softbank2025
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:
-  # Job 1: 전체 프로젝트 빌드 및 테스트
-  build-and-test:
-    name: Build and Test All Services
+  test-services:
+    name: Run Unit Tests (Parallel)
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [server, gateway, fe, deploy, user]
+      fail-fast: false
 
     steps:
       - name: Checkout repository
@@ -32,7 +36,7 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: 'gradle'  # Gradle 캐시 활성화
+          cache: 'gradle'
 
       # AWS 자격증명 설정
       - name: Configure AWS credentials
@@ -45,45 +49,21 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
-      - name: Build and Test All Services
-        run: ./gradlew build -x test
+      - name: Run Tests for ${{ matrix.service }}
+        run: ./gradlew :${{ matrix.service }}:test --parallel --build-cache
 
-      - name: Run Tests
-        run: ./gradlew test
-        
-
-      # 빌드된 JAR 파일을 아티팩트로 저장
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-artifacts
-          path: |
-            server/build/libs/*.jar
-            gateway/build/libs/*.jar
-            fe/build/libs/*.jar
-            deploy/build/libs/*.jar
-            user/build/libs/*.jar
-          retention-days: 1
-
-  # Job 2: 서비스별 Docker 이미지 빌드 및 스캔
-  docker-build-scan-push:
-    name: Docker Build, Scan & Push
-    needs: build-and-test
+  build-push:
+    name: Build & Push (Parallel)
+    needs: test-services
     runs-on: ubuntu-latest
     strategy:
       matrix:
         service: [server, gateway, fe, deploy, user]
-      fail-fast: false  # 하나 실패해도 다른 서비스 계속 진행
+      fail-fast: false
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
-      # 빌드 아티팩트 다운로드
-      - name: Download Build Artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: build-artifacts
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -94,20 +74,41 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Docker 이미지 빌드
-      - name: Build Docker Image for ${{ matrix.service }}
-        run: |
-          IMAGE_NAME="${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}"
+      - name: Build, Push, and Cache Docker Image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./${{ matrix.service }}/Dockerfile
+          push: true
+          tags: |
+            ${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}
+            ${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}:latest
+          cache-from: |
+            type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}:latest
+            type=gha,scope=${{ github.ref_name }}-${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ github.ref_name }}-${{ matrix.service }}
+          build-args: |
+            BUILDKIT_INLINE_CACHE=1
 
-          docker build \
-            -t $IMAGE_NAME:${{ env.IMAGE_TAG }} \
-            -t $IMAGE_NAME:latest \
-            -f ./${{ matrix.service }}/Dockerfile \
-            ./${{ matrix.service }}
+  security-scan:
+    name: Security Scan (Non-blocking)
+    needs: build-push
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    strategy:
+      matrix:
+        service: [server, gateway, fe, deploy, user]
+      fail-fast: false
+    
+    steps:
+      - name: Cache Trivy DB
+        uses: actions/cache@v4
+        with:
+          path: /home/runner/.cache/trivy
+          key: trivy-db-${{ runner.os }}
+          restore-keys: |
+            trivy-db-
 
-          echo "✅ Image built: $IMAGE_NAME:${{ env.IMAGE_TAG }}"
-
-      # Trivy 보안 스캔
       - name: Run Trivy Security Scan
         uses: aquasecurity/trivy-action@master
         with:
@@ -115,9 +116,8 @@ jobs:
           format: 'sarif'
           output: 'trivy-results-${{ matrix.service }}.sarif'
           severity: 'CRITICAL,HIGH'
-          exit-code: '0'  # 취약점 발견해도 실패하지 않음
+          exit-code: '0'
 
-      # Trivy 결과를 GitHub Security 탭에 업로드
       - name: Upload Trivy Results to GitHub Security
         uses: github/codeql-action/upload-sarif@v3
         if: always()
@@ -126,33 +126,16 @@ jobs:
           sarif_file: 'trivy-results-${{ matrix.service }}.sarif'
           category: 'trivy-${{ matrix.service }}'
 
-      # Trivy 스캔 결과를 텍스트로도 출력
-      - name: Run Trivy Scan (Table Format)
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}
-          format: 'table'
-          severity: 'CRITICAL,HIGH'
-
-      # Docker 이미지 푸시
-      - name: Push Docker Images
-        run: |
-          IMAGE_NAME="${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}"
-          docker push $IMAGE_NAME:${{ env.IMAGE_TAG }}
-          docker push $IMAGE_NAME:latest
-          echo "✅ Pushed: $IMAGE_NAME:${{ env.IMAGE_TAG }} and latest"
-
-  # Job 3: EC2 배포
   deploy-to-ec2:
     name: Deploy to EC2
-    needs: docker-build-scan-push
+    needs: build-push
     runs-on: ubuntu-latest
-    if: (github.ref == 'refs/heads/main') && github.event_name == 'push'
+    if: github.event_name == 'push' && ( (github.ref == 'refs/heads/main') || (github.ref == 'refs/heads/feat/ci-cd-test-deploy') )
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # docker-compose.yml 업데이트 (이미지 태그 변경)
       - name: Update docker-compose.yml with new image tags
         run: |
           sed -i "s|image: softbank2025/server.*|image: softbank2025/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
@@ -160,60 +143,39 @@ jobs:
           sed -i "s|image: softbank2025/fe.*|image: softbank2025/fe:${{ env.IMAGE_TAG }}|g" docker-compose.yml
           sed -i "s|image: softbank2025/deploy.*|image: softbank2025/deploy:${{ env.IMAGE_TAG }}|g" docker-compose.yml
           sed -i "s|image: softbank2025/user.*|image: softbank2025/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          echo "📝 Updated docker-compose.yml"
 
-          echo "📝 Updated docker-compose.yml:"
-          cat docker-compose.yml
-
-      # EC2에 배포
-      - name: Deploy to EC2 via SSH
+      - name: Deploy and Verify via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_PRIVATE_KEY }}
           script: |
-            set -e  # 에러 발생 시 즉시 중단
-
-            echo "🔧 Changing file ownership..."
-            sudo chown -R $USER:$USER .
-
+            set -e
+            
             echo "📂 Navigating to project directory..."
             cd /home/ubuntu/Raspberry
 
             echo "🔄 Pulling latest code..."
             git pull origin ${{ github.ref_name }}
             
-            # === 💡 스왑 메모리 설정 시작 ===
-            # EC2 Micro 인스턴스의 메모리 부족(OOM) 방지를 위해 2GB 스왑 파일 생성
-            
-            # 1. 스왑 파일이 이미 있는지 확인
             if [ -f /swapfile ]; then
-              echo "ℹ️ Swap file /swapfile already exists. Skipping creation."
+              echo "ℹ️ Swap file already exists."
             else
               echo "🚀 Creating 2G swap file..."
-              sudo fallocate -l 2G /swapfile  # 2GB 스왑 파일 생성
-              sudo chmod 600 /swapfile       # 권한 설정
-              sudo mkswap /swapfile          # 스왑 영역으로 포맷
+              sudo fallocate -l 2G /swapfile
+              sudo chmod 600 /swapfile
+              sudo mkswap /swapfile
             fi
-            
-            # 2. 스왑이 이미 활성화되어 있는지 확인
             if ! sudo swapon --show | grep -q '/swapfile'; then
               echo "🟢 Activating swap..."
               sudo swapon /swapfile
-            else
-              echo "ℹ️ Swap is already active."
             fi
-            
-            # 3. 부팅 시 자동 마운트 (fstab에 등록)
             if ! grep -q '/swapfile' /etc/fstab; then
-              echo "✏️ Adding swap to /etc/fstab for persistence..."
+              echo "✏️ Adding swap to /etc/fstab..."
               echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
             fi
-            
-            echo "📊 Current swap status:"
-            sudo swapon --show
-            free -h
-            # === 스왑 메모리 설정 끝 ===
 
             echo "🐳 Logging in to Docker Hub..."
             echo "${{ secrets.DOCKERHUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
@@ -224,56 +186,55 @@ jobs:
             echo "📥 Pulling latest Docker images..."
             docker-compose pull
 
-            echo "🛑 Stopping and removing corrupted containers..."
+            echo "🛑 Stopping containers..."
             docker-compose down
 
-            echo "🚀 Starting services with new images..."
+            echo "🚀 Starting services..."
             docker-compose up -d --remove-orphans
 
             echo "🧹 Cleaning up old images..."
             docker image prune -a -f
 
-            echo "⏳ Waiting for services to start..."
-            sleep 15
+            echo "⏳ Starting health check (Max 60s)..."
+            timeout=60
+            interval=3
+            elapsed=0
+            
+            while true; do
+              eureka_ok=false
+              gateway_ok=false
+              
+              if curl -sf http://localhost:8761 > /dev/null 2>&1; then
+                eureka_ok=true
+                echo "  ✅ Eureka Server is UP"
+              fi
+              
+              if curl -sf http://localhost:8080/actuator/health > /dev/null 2>&1; then
+                gateway_ok=true
+                echo "  ✅ Gateway is UP"
+              fi
+              
+              if [ "$eureka_ok" = true ] && [ "$gateway_ok" = true ]; then
+                echo "🎉 All critical services are healthy!"
+                echo "📊 Final Service Status:"
+                docker-compose ps
+                exit 0
+              fi
 
-            echo "✅ Deployment completed!"
-            docker-compose ps
+              if [ $elapsed -ge $timeout ]; then
+                echo "❌ Health check FAILED after ${timeout}s"
+                echo "--- Eureka Server Logs ---"
+                docker-compose logs --tail=30 eureka-server
+                echo "--- Gateway Logs ---"
+                docker-compose logs --tail=30 gateway
+                exit 1
+              fi
+              
+              echo "  ⏳ Waiting... ($elapsed/${timeout}s)"
+              sleep $interval
+              elapsed=$((elapsed + interval))
+            done
 
-      # 배포 검증
-      - name: Verify Deployment
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ${{ secrets.EC2_USER }}
-          key: ${{ secrets.EC2_PRIVATE_KEY }}
-          script: |
-
-            echo "⏳ Waiting for services to initialize..."
-            sleep 50
-
-            cd /home/ubuntu/Raspberry
-
-            echo "🔍 Checking service health..."
-
-            # Eureka Server 체크
-            if curl -sf http://localhost:8761 > /dev/null 2>&1; then
-              echo "✅ Eureka Server is healthy"
-            else
-              echo "❌ Eureka Server health check failed"
-              exit 1
-            fi
-
-            # Gateway 체크
-            if curl -sf http://localhost:8080/actuator/health > /dev/null 2>&1; then
-              echo "✅ Gateway is healthy"
-            else
-              echo "⚠️ Gateway health check failed"
-            fi
-
-            echo "📊 Service Status:"
-            docker-compose ps
-
-      # Slack 알림 (선택사항)
       - name: Notify Deployment Status
         if: always()
         run: |
