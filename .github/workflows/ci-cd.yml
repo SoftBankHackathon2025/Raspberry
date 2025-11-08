@@ -114,7 +114,7 @@ jobs:
     name: Deploy to EC2
     needs: docker-build-scan-push
     runs-on: ubuntu-latest
-    if: (github.ref == 'refs/heads/main') && github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
