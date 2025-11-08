@@ -9,15 +9,12 @@ contactPoints:
         settings:
           endpointUrl: ${SLACK_WEBHOOK_URL}
           recipient: "#alert-critical"
-          title: "[{{ .Status | toUpper }}] {{ .Labels.alertname }}"
+          title: '[{{ .Status | toUpper }}{{ if eq .Status "firing" }}:{{ .Alerts.Firing | len }}{{ end }}] {{ .CommonLabels.alertname }}'
           text: |
-            {{- if .Alerts -}}
-            {{ range .Alerts }}
-            • *app*: {{ .Labels.application | default "n/a" }}
-              *inst*: {{ .Labels.instance | default "n/a" }}
-              *value*: {{ .ValueString | default "n/a" }}
-              {{- if .Annotations.summary }} — {{ .Annotations.summary }}{{ end }}
-            {{ end }}
-            {{- else -}}
-            (no alerts)
+            {{- range .Alerts }}
+            *Alert:* `{{ .Annotations.summary }}`
+            *Description:* {{ .Annotations.description }}
+            *Details:*
+            >• *Service:* `{{ .Labels.application }}`
+            >• *Instance:* `{{ .Labels.instance }}`
             {{- end }}
