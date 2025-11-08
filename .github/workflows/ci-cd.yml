@@ -1,282 +1,282 @@
 name: CI/CD Pipeline for Microservices
 
 on:
-  pull_request:
-    branches:
-      - main
-  workflow_dispatch:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
 
 permissions:
-  contents: read
-  security-events: write
+  contents: read
+  security-events: write
 
 env:
-  DOCKER_REGISTRY: kwa06001
-  IMAGE_TAG: ${{ github.sha }}
+  DOCKER_REGISTRY: kwa06001
+  IMAGE_TAG: ${{ github.sha }}
 
 jobs:
-  test:
-    name: Run Unit Tests
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+  test:
+    name: Run Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: 'gradle'
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x ./gradlew
+      - name: Grant execute permission for gradlew
+        run: chmod +x ./gradlew
 
-      - name: Run Tests
-        run: ./gradlew test
-        
-  docker-build-scan-push:
-    name: Docker Build, Scan & Push
-    needs: test
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        service: [server, gateway, fe, deploy, user]
-      fail-fast: false
+      - name: Run Tests
+        run: ./gradlew test
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+  docker-build-scan-push:
+    name: Docker Build, Scan & Push
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [server, gateway, fe, deploy, user]
+      fail-fast: false
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
-      - name: Build Docker Image for ${{ matrix.service }}
-        run: |
-          IMAGE_NAME="${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}"
-          docker build \
-            -t $IMAGE_NAME:${{ env.IMAGE_TAG }} \
-            -t $IMAGE_NAME:latest \
-            -f ./${{ matrix.service }}/Dockerfile \
-            .
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Run Trivy Security Scan
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}
-          format: 'sarif'
-          output: 'trivy-results-${{ matrix.service }}.sarif'
-          severity: 'CRITICAL,HIGH'
-          exit-code: '0'
+      - name: Build Docker Image for ${{ matrix.service }}
+        run: |
+          IMAGE_NAME="${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}"
+          docker build \
+            -t $IMAGE_NAME:${{ env.IMAGE_TAG }} \
+            -t $IMAGE_NAME:latest \
+            -f ./${{ matrix.service }}/Dockerfile \
+            .
 
-      - name: Upload Trivy Results to GitHub Security
-        uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        continue-on-error: true
-        with:
-          sarif_file: 'trivy-results-${{ matrix.service }}.sarif'
-          category: 'trivy-${{ matrix.service }}'
+      - name: Run Trivy Security Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}
+          format: 'sarif'
+          output: 'trivy-results-${{ matrix.service }}.sarif'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
 
-      - name: Run Trivy Scan (Table Format)
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}
-          format: 'table'
-          severity: 'CRITICAL,HIGH'
+      - name: Upload Trivy Results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        continue-on-error: true
+        with:
+          sarif_file: 'trivy-results-${{ matrix.service }}.sarif'
+          category: 'trivy-${{ matrix.service }}'
 
-      - name: Push Docker Images
-        run: |
-          IMAGE_NAME="${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}"
-          docker push $IMAGE_NAME:${{ env.IMAGE_TAG }}
-          docker push $IMAGE_NAME:latest
-          echo "✅ Pushed: $IMAGE_NAME:${{ env.IMAGE_TAG }} and latest"
+      - name: Run Trivy Scan (Table Format)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}
+          format: 'table'
+          severity: 'CRITICAL,HIGH'
 
-  deploy-to-ec2:
-    name: Deploy to EC2
-    needs: docker-build-scan-push
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Push Docker Images
+        run: |
+          IMAGE_NAME="${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}"
+          docker push $IMAGE_NAME:${{ env.IMAGE_TAG }}
+          docker push $IMAGE_NAME:latest
+          echo "✅ Pushed: $IMAGE_NAME:${{ env.IMAGE_TAG }} and latest"
 
-      - name: Update docker-compose.yml to use images
-        run: |
-          sed -i "s|build:\s*context: \.|image: kwa06001/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/image: kwa06001\/server/! s|build:\s*./server|image: kwa06001/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/dockerfile: \.\/server\/Dockerfile/d" docker-compose.yml
-          
-          sed -i "s|build:\s*context: \.|image: kwa06001/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/image: kwa06001\/gateway/! s|build:\s*./gateway|image: kwa06001/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/dockerfile: \.\/gateway\/Dockerfile/d" docker-compose.yml
+  deploy-to-ec2:
+    name: Deploy to EC2
+    needs: docker-build-scan-push
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-          sed -i "s|build:\s*context: \.|image: kwa06001/fe:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/image: kwa06001\/fe/! s|build:\s*./fe|image: kwa06001/fe:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/dockerfile: \.\/fe\/Dockerfile/d" docker-compose.yml
-          
-          sed -i "s|build:\s*context: \.|image: kwa06001/deploy:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/image: kwa06001\/deploy/! s|build:\s*./deploy|image: kwa06001/deploy:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/dockerfile: \.\/deploy\/Dockerfile/d" docker-compose.yml
-          
-          sed -i "s|build:\s*context: \.|image: kwa06001/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/image: kwa06001\/user/! s|build:\s*./user|image: kwa06001/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/dockerfile: \.\/user\/Dockerfile/d" docker-compose.yml
-          
-          echo "📝 Updated docker-compose.yml (to use images instead of build):"
-          cat docker-compose.yml
+      - name: Update docker-compose.yml to use images
+        run: |
+          sed -i "s|build:\s*context: \.|image: kwa06001/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/image: kwa06001\/server/! s|build:\s*./server|image: kwa06001/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/dockerfile: \.\/server\/Dockerfile/d" docker-compose.yml
+          
+          sed -i "s|build:\s*context: \.|image: kwa06001/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/image: kwa06001\/gateway/! s|build:\s*./gateway|image: kwa06001/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/dockerfile: \.\/gateway\/Dockerfile/d" docker-compose.yml
 
-      # AWS 자격증명 설정
-      - name: Configure AWS Credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ secrets.AWS_REGION }}
+          sed -i "s|build:\s*context: \.|image: kwa06001/fe:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/image: kwa06001\/fe/! s|build:\s*./fe|image: kwa06001/fe:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/dockerfile: \.\/fe\/Dockerfile/d" docker-compose.yml
+          
+          sed -i "s|build:\s*context: \.|image: kwa06001/deploy:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/image: kwa06001\/deploy/! s|build:\s*./deploy|image: kwa06001/deploy:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/dockerfile: \.\/deploy\/Dockerfile/d" docker-compose.yml
+          
+          sed -i "s|build:\s*context: \.|image: kwa06001/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/image: kwa06001\/user/! s|build:\s*./user|image: kwa06001/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/dockerfile: \.\/user\/Dockerfile/d" docker-compose.yml
+          
+          echo "📝 Updated docker-compose.yml (to use images instead of build):"
+          cat docker-compose.yml
 
-      # AWS SSM Run Command로 배포
-      - name: Deploy to EC2 via AWS SSM
-        run: |
-          COMMAND_SCRIPT='''
-          #!/bin/bash
-          set -e
-          
-          echo "📂 Navigating to project directory..."
-          cd /home/ubuntu/Raspberry # EC2 내 프로젝트 경로
-          
-          echo "🔧 Changing file ownership..."
-          sudo chown -R $USER:$USER .
-          
-          echo "🔄 Pulling latest code..."
-          git pull origin ${{ github.ref_name }}
-          
-          # === 💡 스왑 메모리 설정 === (이하 원본 스크립트 내용 유지)
-          if [ -f /swapfile ]; then
-            echo "ℹ️ Swap file /swapfile already exists."
-          else
-            echo "🚀 Creating 2G swap file..."
-            sudo fallocate -l 2G /swapfile
-            sudo chmod 600 /swapfile
-            sudo mkswap /swapfile
-          fi
-          if ! sudo swapon --show | grep -q "/swapfile"; then
-            echo "🟢 Activating swap..."
-            sudo swapon /swapfile
-          fi
-          if ! grep -q "/swapfile" /etc/fstab; then
-            echo "✏️ Adding swap to /etc/fstab..."
-            echo "/swapfile none swap sw 0 0" | sudo tee -a /etc/fstab
-          fi
-          echo "📊 Current swap status:"
-          sudo swapon --show
-          free -h
-          # === 스왑 메모리 설정 끝 ===
-          
-          echo "🐳 Logging in to Docker Hub..."
-          echo "${{ secrets.DOCKERHUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
-          
-          echo "🔧 Granting Docker socket permissions..."
-          sudo chmod 666 /var/run/docker.sock
-          
-          # [!!] EC2에서 직접 sed 실행 [!!]
-          echo "🔧 Updating docker-compose.yml on EC2 to use images..."
-          sed -i "s|build:\s*context: \.|image: kwa06001/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/image: kwa06001\/server/! s|build:\s*./server|image: kwa06001/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/dockerfile: \.\/server\/Dockerfile/d" docker-compose.yml
-          
-          sed -i "s|build:\s*context: \.|image: kwa06001/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/image: kwa06001\/gateway/! s|build:\s*./gateway|image: kwa06001/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/dockerfile: \.\/gateway\/Dockerfile/d" docker-compose.yml
-          
-          sed -i "s|build:\s*context: \.|image: kwa06001/fe:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/image: kwa06001\/fe/! s|build:\s*./fe|image: kwa06001/fe:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/dockerfile: \.\/fe\/Dockerfile/d" docker-compose.yml
-          
-          sed -i "s|build:\s*context: \.|image: kwa06001/deploy:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/image: kwa06001\/deploy/! s|build:\s*./deploy|image: kwa06001/deploy:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/dockerfile: \.\/deploy\/Dockerfile/d" docker-compose.yml
-          
-          sed -i "s|build:\s*context: \.|image: kwa06001/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/image: kwa06001\/user/! s|build:\s*./user|image: kwa06001/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/dockerfile: \.\/user\/Dockerfile/d" docker-compose.yml
-          
-          echo "📥 Pulling latest Docker images from Docker Hub..."
-          docker-compose pull
-          
-          echo "🛑 Stopping and removing corrupted containers..."
-          docker-compose down
-          
-          echo "🚀 Starting services with new images..."
-          docker-compose up -d --remove-orphans
-          
-          echo "🧹 Cleaning up old images..."
-          docker image prune -a -f
-          
-          echo "⏳ Waiting for services to start..."
-          sleep 15
-          
-          echo "✅ Deployment completed!"
-          docker-compose ps
-        ''' # 💡 수정된 부분: COMMAND_SCRIPT와 같은 열에 위치
-        
-        # 💡 AWS CLI send-command 호출
-        aws ssm send-command \
-          --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
-          --document-name "AWS-RunShellScript" \
-          --parameters commands="$COMMAND_SCRIPT" \
-          --timeout-seconds 600 \
-          --output text
+      # AWS 자격증명 설정
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
 
-      # AWS SSM으로 배포 검증
-      - name: Verify Deployment
-        run: |
-          VERIFY_SCRIPT='''
-          #!/bin/bash
-          set -e
+      # AWS SSM Run Command로 배포
+      - name: Deploy to EC2 via AWS SSM
+        run: |
+          COMMAND_SCRIPT='''
+          #!/bin/bash
+          set -e
+          
+          echo "📂 Navigating to project directory..."
+          cd /home/ubuntu/Raspberry # EC2 내 프로젝트 경로
+          
+          echo "🔧 Changing file ownership..."
+          sudo chown -R $USER:$USER .
+          
+          echo "🔄 Pulling latest code..."
+          git pull origin ${{ github.ref_name }}
+          
+          # === 💡 스왑 메모리 설정 === (이하 원본 스크립트 내용 유지)
+          if [ -f /swapfile ]; then
+            echo "ℹ Swap file /swapfile already exists."
+          else
+            echo "🚀 Creating 2G swap file..."
+            sudo fallocate -l 2G /swapfile
+            sudo chmod 600 /swapfile
+            sudo mkswap /swapfile
+          fi
+          if ! sudo swapon --show | grep -q "/swapfile"; then
+            echo "🟢 Activating swap..."
+            sudo swapon /swapfile
+          fi
+          if ! grep -q "/swapfile" /etc/fstab; then
+            echo "✏ Adding swap to /etc/fstab..."
+            echo "/swapfile none swap sw 0 0" | sudo tee -a /etc/fstab
+          fi
+          echo "📊 Current swap status:"
+          sudo swapon --show
+          free -h
+          # === 스왑 메모리 설정 끝 ===
+          
+          echo "🐳 Logging in to Docker Hub..."
+          echo "${{ secrets.DOCKERHUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+          
+          echo "🔧 Granting Docker socket permissions..."
+          sudo chmod 666 /var/run/docker.sock
+          
+          # [!!] EC2에서 직접 sed 실행 [!!]
+          echo "🔧 Updating docker-compose.yml on EC2 to use images..."
+          sed -i "s|build:\s*context: \.|image: kwa06001/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/image: kwa06001\/server/! s|build:\s*./server|image: kwa06001/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/dockerfile: \.\/server\/Dockerfile/d" docker-compose.yml
+          
+          sed -i "s|build:\s*context: \.|image: kwa06001/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/image: kwa06001\/gateway/! s|build:\s*./gateway|image: kwa06001/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/dockerfile: \.\/gateway\/Dockerfile/d" docker-compose.yml
+          
+          sed -i "s|build:\s*context: \.|image: kwa06001/fe:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/image: kwa06001\/fe/! s|build:\s*./fe|image: kwa06001/fe:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/dockerfile: \.\/fe\/Dockerfile/d" docker-compose.yml
+          
+          sed -i "s|build:\s*context: \.|image: kwa06001/deploy:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/image: kwa06001\/deploy/! s|build:\s*./deploy|image: kwa06001/deploy:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/dockerfile: \.\/deploy\/Dockerfile/d" docker-compose.yml
+          
+          sed -i "s|build:\s*context: \.|image: kwa06001/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/image: kwa06001\/user/! s|build:\s*./user|image: kwa06001/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
+          sed -i "/dockerfile: \.\/user\/Dockerfile/d" docker-compose.yml
+          
+          echo "📥 Pulling latest Docker images from Docker Hub..."
+          docker-compose pull
+          
+          echo "🛑 Stopping and removing corrupted containers..."
+          docker-compose down
+          
+          echo "🚀 Starting services with new images..."
+          docker-compose up -d --remove-orphans
+          
+          echo "🧹 Cleaning up old images..."
+          docker image prune -a -f
+          
+          echo "⏳ Waiting for services to start..."
+          sleep 15
+          
+          echo "✅ Deployment completed!"
+          docker-compose ps
+          ''' # 💡 수정된 부분: COMMAND_SCRIPT와 같은 열에 위치
+        
+          # 💡 AWS CLI send-command 호출
+          aws ssm send-command \ 
+            --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+            --document-name "AWS-RunShellScript" \
+            --parameters commands="$COMMAND_SCRIPT" \
+            --timeout-seconds 600 \
+            --output text
 
-          echo "⏳ Waiting for services to initialize..."
-          sleep 50
+      # AWS SSM으로 배포 검증
+      - name: Verify Deployment
+        run: |
+          VERIFY_SCRIPT='''
+          #!/bin/bash
+          set -e
+          
+          echo "⏳ Waiting for services to initialize..."
+          sleep 50
+          
+          cd /home/ubuntu/Raspberry
+          
+          echo "🔍 Checking service health..."
+          
+          if curl -sf http://localhost:8761 > /dev/null 2>&1; then
+          echo "✅ Eureka Server is healthy"
+          else
+          echo "❌ Eureka Server health check failed"
+          exit 1
+          fi
+          
+          if curl -sf http://localhost:8080/actuator/health > /dev/null 2>&1; then
+          echo "✅ Gateway is healthy"
+          else
+          echo "⚠ Gateway health check failed"
+          fi
+          
+          echo "📊 Service Status:"
+          docker-compose ps
+          ''' # 💡 수정된 부분: VERIFY_SCRIPT와 같은 열에 위치
+          
+          aws ssm send-command \
+          --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
+          --document-name "AWS-RunShellScript" \
+          --parameters commands="$VERIFY_SCRIPT" \
+          --timeout-seconds 300 \
+          --output text
 
-          cd /home/ubuntu/Raspberry
-
-          echo "🔍 Checking service health..."
-
-          if curl -sf http://localhost:8761 > /dev/null 2>&1; then
-            echo "✅ Eureka Server is healthy"
-          else
-            echo "❌ Eureka Server health check failed"
-            exit 1
-          fi
-
-          if curl -sf http://localhost:8080/actuator/health > /dev/null 2>&1; then
-            echo "✅ Gateway is healthy"
-          else
-            echo "⚠️ Gateway health check failed"
-          fi
-
-          echo "📊 Service Status:"
-          docker-compose ps
-        ''' # 💡 수정된 부분: VERIFY_SCRIPT와 같은 열에 위치
-          
-          aws ssm send-command \
-            --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
-            --document-name "AWS-RunShellScript" \
-            --parameters commands="$VERIFY_SCRIPT" \
-            --timeout-seconds 300 \
-            --output text
-
-      # Slack 알림 (선택사항)
-      - name: Notify Deployment Status
-        if: always()
-        run: |
-          if [ "${{ job.status }}" == "success" ]; then
-            echo "✅ Deployment successful to EC2"
-          else
-            echo "❌ Deployment failed!"
-            exit 1
-          fi
+      # Slack 알림 (선택사항)
+      - name: Notify Deployment Status
+        if: always()
+        run: |
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "✅ Deployment successful to EC2"
+          else
+            echo "❌ Deployment failed!"
+            exit 1
+          fi
