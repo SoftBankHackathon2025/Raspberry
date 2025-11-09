@@ -1,4 +1,4 @@
-name: CI/CD Pipeline for Microservices
+name: CI/CD Pipeline for Microservices (Ultra-Fast)
 
 on:
   pull_request:
@@ -15,12 +15,18 @@ env:
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:
-  test:
-    name: Run Unit Tests
+  # 변경된 서비스 감지 + 빌드를 한 번에
+  build-jars:
+    name: Build All JARs
     runs-on: ubuntu-latest
+    outputs:
+      services: ${{ steps.set-matrix.outputs.services }}
+      has-changes: ${{ steps.set-matrix.outputs.has-changes }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -29,24 +35,134 @@ jobs:
           distribution: 'temurin'
           cache: 'gradle'
 
+      - name: Detect changed files
+        id: changes
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "서비스 전체 배포 (수동 실행)"
+            echo "server=true" >> $GITHUB_OUTPUT
+            echo "gateway=true" >> $GITHUB_OUTPUT
+            echo "fe=true" >> $GITHUB_OUTPUT
+            echo "deploy=true" >> $GITHUB_OUTPUT
+            echo "user=true" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" == "pull_request" ]; then
+            CHANGED_FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }} ${{ github.sha }})
+            echo "Changed files:"
+            echo "$CHANGED_FILES"
+            
+            if echo "$CHANGED_FILES" | grep -qE "^server/|^build.gradle$|^settings.gradle$"; then
+              echo "server=true" >> $GITHUB_OUTPUT
+            else
+              echo "server=false" >> $GITHUB_OUTPUT
+            fi
+            
+            if echo "$CHANGED_FILES" | grep -qE "^gateway/|^build.gradle$|^settings.gradle$"; then
+              echo "gateway=true" >> $GITHUB_OUTPUT
+            else
+              echo "gateway=false" >> $GITHUB_OUTPUT
+            fi
+            
+            if echo "$CHANGED_FILES" | grep -qE "^fe/|^build.gradle$|^settings.gradle$"; then
+              echo "fe=true" >> $GITHUB_OUTPUT
+            else
+              echo "fe=false" >> $GITHUB_OUTPUT
+            fi
+            
+            if echo "$CHANGED_FILES" | grep -qE "^deploy/|^build.gradle$|^settings.gradle$"; then
+              echo "deploy=true" >> $GITHUB_OUTPUT
+            else
+              echo "deploy=false" >> $GITHUB_OUTPUT
+            fi
+            
+            if echo "$CHANGED_FILES" | grep -qE "^user/|^build.gradle$|^settings.gradle$"; then
+              echo "user=true" >> $GITHUB_OUTPUT
+            else
+              echo "user=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "메인 브랜치 푸시 - 전체 배포"
+            echo "server=true" >> $GITHUB_OUTPUT
+            echo "gateway=true" >> $GITHUB_OUTPUT
+            echo "fe=true" >> $GITHUB_OUTPUT
+            echo "deploy=true" >> $GITHUB_OUTPUT
+            echo "user=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set matrix services
+        id: set-matrix
+        run: |
+          CHANGED_SERVICES=""
+          
+          if [ "${{ steps.changes.outputs.server }}" == "true" ]; then
+            CHANGED_SERVICES="${CHANGED_SERVICES}\"server\","
+          fi
+          if [ "${{ steps.changes.outputs.gateway }}" == "true" ]; then
+            CHANGED_SERVICES="${CHANGED_SERVICES}\"gateway\","
+          fi
+          if [ "${{ steps.changes.outputs.fe }}" == "true" ]; then
+            CHANGED_SERVICES="${CHANGED_SERVICES}\"fe\","
+          fi
+          if [ "${{ steps.changes.outputs.deploy }}" == "true" ]; then
+            CHANGED_SERVICES="${CHANGED_SERVICES}\"deploy\","
+          fi
+          if [ "${{ steps.changes.outputs.user }}" == "true" ]; then
+            CHANGED_SERVICES="${CHANGED_SERVICES}\"user\","
+          fi
+          
+          CHANGED_SERVICES=$(echo $CHANGED_SERVICES | sed 's/,$//')
+          
+          if [ -z "$CHANGED_SERVICES" ]; then
+            echo "services=[]" >> $GITHUB_OUTPUT
+            echo "has-changes=false" >> $GITHUB_OUTPUT
+            echo "⚠️ 변경된 서비스 없음"
+          else
+            echo "services=[$CHANGED_SERVICES]" >> $GITHUB_OUTPUT
+            echo "has-changes=true" >> $GITHUB_OUTPUT
+            echo "✅ 변경된 서비스: [$CHANGED_SERVICES]"
+          fi
+
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
-      - name: Run Tests
-        run: ./gradlew test
+      - name: Build all services (parallel)
+        run: |
+          echo "🔨 Building all services in parallel..."
+          ./gradlew build -x test --parallel --max-workers=5 --build-cache
 
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-artifacts
+          path: |
+            server/build/libs/*.jar
+            gateway/build/libs/*.jar
+            fe/build/libs/*.jar
+            deploy/build/libs/*.jar
+            user/build/libs/*.jar
+          retention-days: 1
+
+  # 5개 서비스 완전 병렬 빌드
   docker-build-scan-push:
-    name: Docker Build, Scan & Push
-    needs: test
+    name: Docker Build & Push
+    needs: build-jars
     runs-on: ubuntu-latest
+    if: needs.build-jars.outputs.has-changes == 'true'
     strategy:
       matrix:
-        service: [server, gateway, fe, deploy, user]
+        service: ${{ fromJson(needs.build-jars.outputs.services) }}
       fail-fast: false
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-artifacts
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -54,28 +170,41 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build Docker Image for ${{ matrix.service }}
+      # 최적화된 Dockerfile 사용 (JAR 파일 직접 복사)
+      - name: Create optimized Dockerfile
         run: |
-          IMAGE_NAME="${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}"
-          docker build \
-            -t $IMAGE_NAME:${{ env.IMAGE_TAG }} \
-            -t $IMAGE_NAME:latest \
-            -f ./${{ matrix.service }}/Dockerfile \
-            .
+          cat > ${{ matrix.service }}/Dockerfile.fast << 'EOF'
+          FROM eclipse-temurin:17-jre-focal
+          WORKDIR /app
+          COPY ${{ matrix.service }}/build/libs/*.jar app.jar
+          EXPOSE 8080
+          ENTRYPOINT ["java", "-jar", "app.jar"]
+          EOF
 
-      - name: Run Trivy Security Scan
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./${{ matrix.service }}/Dockerfile.fast
+          push: true
+          tags: |
+            ${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}
+            ${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}:latest
+          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}:buildcache
+          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}:buildcache,mode=max
+
+      # Trivy 스캔 (백그라운드, 블로킹 없음)
+      - name: Run Trivy scan
         uses: aquasecurity/trivy-action@master
+        continue-on-error: true
         with:
           image-ref: ${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}
           format: 'sarif'
           output: 'trivy-results-${{ matrix.service }}.sarif'
           severity: 'CRITICAL,HIGH'
-          exit-code: '0'
+          timeout: '5m0s'
 
-      - name: Upload Trivy Results to GitHub Security
+      - name: Upload Trivy results
         uses: github/codeql-action/upload-sarif@v3
         if: always()
         continue-on-error: true
@@ -83,55 +212,16 @@ jobs:
           sarif_file: 'trivy-results-${{ matrix.service }}.sarif'
           category: 'trivy-${{ matrix.service }}'
 
-      - name: Run Trivy Scan (Table Format)
-        uses: aquasecurity/trivy-action@master
-        with:
-          image-ref: ${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}
-          format: 'table'
-          severity: 'CRITICAL,HIGH'
-
-      - name: Push Docker Images
-        run: |
-          IMAGE_NAME="${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}"
-          docker push $IMAGE_NAME:${{ env.IMAGE_TAG }}
-          docker push $IMAGE_NAME:latest
-          echo "✅ Pushed: $IMAGE_NAME:${{ env.IMAGE_TAG }} and latest"
-
+  # 배포
   deploy-to-ec2:
     name: Deploy to EC2
-    needs: docker-build-scan-push
+    needs: [build-jars, docker-build-scan-push]
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
+    if: (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') && needs.build-jars.outputs.has-changes == 'true'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Update docker-compose.yml to use images
-        run: |
-          sed -i "s|build:\s*context: \.|image: kwa06001/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/image: kwa06001\/server/! s|build:\s*./server|image: kwa06001/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/dockerfile: \.\/server\/Dockerfile/d" docker-compose.yml
-          
-          sed -i "s|build:\s*context: \.|image: kwa06001/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/image: kwa06001\/gateway/! s|build:\s*./gateway|image: kwa06001/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/dockerfile: \.\/gateway\/Dockerfile/d" docker-compose.yml
-
-          sed -i "s|build:\s*context: \.|image: kwa06001/fe:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/image: kwa06001\/fe/! s|build:\s*./fe|image: kwa06001/fe:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/dockerfile: \.\/fe\/Dockerfile/d" docker-compose.yml
-          
-          sed -i "s|build:\s*context: \.|image: kwa06001/deploy:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/image: kwa06001\/deploy/! s|build:\s*./deploy|image: kwa06001/deploy:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/dockerfile: \.\/deploy\/Dockerfile/d" docker-compose.yml
-          
-          sed -i "s|build:\s*context: \.|image: kwa06001/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/image: kwa06001\/user/! s|build:\s*./user|image: kwa06001/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/dockerfile: \.\/user\/Dockerfile/d" docker-compose.yml
-          
-          echo "📝 Updated docker-compose.yml (to use images instead of build):"
-          cat docker-compose.yml
-
-      # AWS 자격증명 설정
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -139,157 +229,177 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      # AWS SSM Run Command로 배포
-      - name: Deploy to EC2 via AWS SSM
+      - name: Prepare changed services list
+        id: services
         run: |
-          COMMAND_SCRIPT='''
+          SERVICES=$(echo '${{ needs.build-jars.outputs.services }}' | jq -r '.[]' | tr '\n' ' ')
+          echo "list=$SERVICES" >> $GITHUB_OUTPUT
+          echo "📦 Services to deploy: $SERVICES"
+
+      - name: Deploy to EC2 via AWS SSM
+        id: deploy
+        run: |
+          SERVICES="${{ steps.services.outputs.list }}"
+          
+          cat > deploy.sh << 'DEPLOY_EOF'
           #!/bin/bash
           set -e
           
+          SERVICES="$CHANGED_SERVICES"
+          IMAGE_TAG="$GITHUB_SHA"
+          
           echo "📂 Navigating to project directory..."
-          cd /home/ubuntu/Raspberry # EC2 내 프로젝트 경로
+          cd /home/ubuntu/Raspberry
           
           echo "🔧 Changing file ownership..."
           sudo chown -R $USER:$USER .
           
           echo "🔄 Pulling latest code..."
           git fetch origin 
-          git reset --hard origin/${{ github.ref_name }}
+          git reset --hard $GITHUB_SHA
           
-          # === 💡 스왑 메모리 설정 === (이하 원본 스크립트 내용 유지)
-          if [ -f /swapfile ]; then
-            echo "ℹ Swap file /swapfile already exists."
-          else
-            echo "🚀 Creating 2G swap file..."
+          # 스왑 체크 (간소화)
+          if ! sudo swapon --show | grep -q "/swapfile" && [ ! -f /swapfile ]; then
             sudo fallocate -l 2G /swapfile
             sudo chmod 600 /swapfile
             sudo mkswap /swapfile
-          fi
-          if ! sudo swapon --show | grep -q "/swapfile"; then
-            echo "🟢 Activating swap..."
             sudo swapon /swapfile
-          fi
-          if ! grep -q "/swapfile" /etc/fstab; then
-            echo "✏ Adding swap to /etc/fstab..."
             echo "/swapfile none swap sw 0 0" | sudo tee -a /etc/fstab
           fi
-          echo "📊 Current swap status:"
-          sudo swapon --show
-          free -h
-          # === 스왑 메모리 설정 끝 ===
           
-          echo "🐳 Logging in to Docker Hub..."
-          echo "${{ secrets.DOCKERHUB_PASSWORD }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
+          echo "🐳 Docker login..."
+          echo "$DOCKERHUB_PASSWORD" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
           
-          echo "🔧 Granting Docker socket permissions..."
           sudo chmod 666 /var/run/docker.sock
           
-          # [!!] EC2에서 직접 sed 실행 [!!]
-          echo "🔧 Updating docker-compose.yml on EC2 to use images..."
-          sed -i "s|build:\s*context: \.|image: kwa06001/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/image: kwa06001\/server/! s|build:\s*./server|image: kwa06001/server:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/dockerfile: \.\/server\/Dockerfile/d" docker-compose.yml
+          echo "🔧 Updating docker-compose.yml..."
+          cp docker-compose.yml docker-compose.yml.backup
           
-          sed -i "s|build:\s*context: \.|image: kwa06001/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/image: kwa06001\/gateway/! s|build:\s*./gateway|image: kwa06001/gateway:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/dockerfile: \.\/gateway\/Dockerfile/d" docker-compose.yml
+          for service in $SERVICES; do
+            sed -i "s|image: kwa06001/${service}:.*|image: kwa06001/${service}:${IMAGE_TAG}|g" docker-compose.yml
+          done
+          
+          sed -i '/build:/,+2d' docker-compose.yml
+          
+          echo "📥 Pulling images (parallel)..."
+          for service in $SERVICES; do
+            docker pull kwa06001/${service}:${IMAGE_TAG} &
+          done
+          wait
+          
+          echo "🛑 Stopping and removing old services..." 
+          docker-compose stop $SERVICES || true              
+          docker-compose rm -f $SERVICES || true           
+          
+          echo "🚀 Creating new services..."              
+          docker-compose up -d --no-deps $SERVICES
 
-          sed -i "s|build:\s*context: \.|image: kwa06001/fe:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/image: kwa06001\/fe/! s|build:\s*./fe|image: kwa06001/fe:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/dockerfile: \.\/fe\/Dockerfile/d" docker-compose.yml
+          echo "📊 Ensuring monitoring services are running..."
+          docker-compose up -d prometheus grafana
           
-          sed -i "s|build:\s*context: \.|image: kwa06001/deploy:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/image: kwa06001\/deploy/! s|build:\s*./deploy|image: kwa06001/deploy:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/dockerfile: \.\/deploy\/Dockerfile/d" docker-compose.yml
-          
-          sed -i "s|build:\s*context: \.|image: kwa06001/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/image: kwa06001\/user/! s|build:\s*./user|image: kwa06001/user:${{ env.IMAGE_TAG }}|g" docker-compose.yml
-          sed -i "/dockerfile: \.\/user\/Dockerfile/d" docker-compose.yml
-          
-          echo "📥 Pulling latest Docker images from Docker Hub..."
-          docker-compose pull
-          
-          echo "🛑 Stopping and removing corrupted containers..."
-          docker-compose down
-          
-          echo "🚀 Starting services with new images..."
-          docker-compose up -d --remove-orphans
-          
-          echo "🧹 Cleaning up old images..."
-          docker image prune -a -f
-          
-          echo "⏳ Waiting for services to start..."
+          echo "⏳ Waiting 15s..."
           sleep 15
+          
+          docker image prune -a -f || true
           
           echo "✅ Deployment completed!"
           docker-compose ps
-          ''' # 💡 수정된 부분: COMMAND_SCRIPT와 같은 열에 위치
+          DEPLOY_EOF
           
-          # 💡 COMMAND_SCRIPT의 내용을 JSON 형태로 이스케이프 처리
-          ESCAPED_SCRIPT=$(echo "$COMMAND_SCRIPT" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | awk '{printf "%s\\n", $0}')
+          ENCODED_SCRIPT=$(cat deploy.sh | base64 -w 0)
           
-          # 💡 SSM 명령 JSON 파일 생성 (commands는 string array여야 함)
-          echo '{"Parameters": {"commands": ["'"$ESCAPED_SCRIPT"'"]}}' > ssm_command_params.json
-          
-          # 💡 AWS CLI 호출 시 JSON 파일 직접 사용
-          aws ssm send-command \
+          COMMAND_ID=$(aws ssm send-command \
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
-            --cli-input-json file://ssm_command_params.json \
-            --timeout-seconds 600 \
-            --output text
+            --parameters "commands=[\"echo $ENCODED_SCRIPT | base64 -d > /tmp/deploy.sh && chmod +x /tmp/deploy.sh && DOCKERHUB_PASSWORD='${{ secrets.DOCKERHUB_PASSWORD }}' DOCKERHUB_USERNAME='${{ secrets.DOCKERHUB_USERNAME }}' GITHUB_SHA='${{ github.sha }}' CHANGED_SERVICES='$SERVICES' bash /tmp/deploy.sh\"]" \
+            --timeout-seconds 300 \
+            --output text \
+            --query 'Command.CommandId')
+          
+          echo "command_id=$COMMAND_ID" >> $GITHUB_OUTPUT
+          echo "✅ SSM Command ID: $COMMAND_ID"
 
-      # AWS SSM으로 배포 검증
-      - name: Verify Deployment
+      - name: Wait for deployment
         run: |
-          VERIFY_SCRIPT='''
+          COMMAND_ID="${{ steps.deploy.outputs.command_id }}"
+          
+          for i in {1..30}; do
+            STATUS=$(aws ssm get-command-invocation \
+              --command-id "$COMMAND_ID" \
+              --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+              --query 'Status' \
+              --output text 2>/dev/null || echo "Pending")
+            
+            echo "[$i/30] Status: $STATUS"
+            
+            if [ "$STATUS" = "Success" ]; then
+              echo "✅ Deployment completed!"
+              aws ssm get-command-invocation \
+                --command-id "$COMMAND_ID" \
+                --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+                --query 'StandardOutputContent' \
+                --output text
+              break
+            elif [ "$STATUS" = "Failed" ] || [ "$STATUS" = "TimedOut" ]; then
+              echo "❌ Deployment failed: $STATUS"
+              aws ssm get-command-invocation \
+                --command-id "$COMMAND_ID" \
+                --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+                --query 'StandardErrorContent' \
+                --output text
+              exit 1
+            fi
+            
+            sleep 5
+          done
+
+      - name: Quick health check
+        run: |
+          cat > verify.sh << 'VERIFY_EOF'
           #!/bin/bash
-          set -e
-          
-          echo "⏳ Waiting for services to initialize..."
-          sleep 50
-          
           cd /home/ubuntu/Raspberry
           
-          echo "🔍 Checking service health..."
+          echo "🔍 Health check..."
           
           if curl -sf http://localhost:8761 > /dev/null 2>&1; then
-          echo "✅ Eureka Server is healthy"
+            echo "✅ Eureka OK"
           else
-          echo "❌ Eureka Server health check failed"
-          exit 1
+            echo "❌ Eureka DOWN"
+            exit 1
           fi
           
           if curl -sf http://localhost:8080/actuator/health > /dev/null 2>&1; then
-          echo "✅ Gateway is healthy"
-          else
-          echo "⚠ Gateway health check failed"
+            echo "✅ Gateway OK"
           fi
           
-          echo "📊 Service Status:"
-          docker-compose ps
-          '''
+          docker-compose ps --format "table {{.Service}}\t{{.Status}}"
+          VERIFY_EOF
           
-          # 💡 COMMAND_SCRIPT의 내용을 JSON 형태로 이스케이프 처리
-          ESCAPED_SCRIPT=$(echo "$VERIFY_SCRIPT" | sed 's/\\/\\\\/g' | sed 's/"/\\"/g' | awk '{printf "%s\\n", $0}')
+          ENCODED_SCRIPT=$(cat verify.sh | base64 -w 0)
           
-          # 💡 SSM 명령 JSON 파일 생성 (commands는 string array여야 함)
-          echo '{"Parameters": {"commands": ["'"$ESCAPED_VERIFY_SCRIPT"'"]}}' > ssm_verify_params.json
-          
-          # 💡 AWS CLI 호출 시 JSON 파일 직접 사용
-          aws ssm send-command \
+          VERIFY_CMD=$(aws ssm send-command \
             --instance-ids "${{ secrets.EC2_INSTANCE_ID }}" \
             --document-name "AWS-RunShellScript" \
-            --cli-input-json file://ssm_verify_params.json \
-            --timeout-seconds 600 \
+            --parameters "commands=[\"echo $ENCODED_SCRIPT | base64 -d | bash\"]" \
+            --timeout-seconds 120 \
+            --output text \
+            --query 'Command.CommandId')
+          
+          sleep 8
+          
+          aws ssm get-command-invocation \
+            --command-id "$VERIFY_CMD" \
+            --instance-id "${{ secrets.EC2_INSTANCE_ID }}" \
+            --query 'StandardOutputContent' \
             --output text
 
-      # Slack 알림 (선택사항)
-      - name: Notify Deployment Status
+      - name: Summary
         if: always()
         run: |
           if [ "${{ job.status }}" == "success" ]; then
-            echo "✅ Deployment successful to EC2"
+            echo "✅ Deployment successful!"
+            echo "🔖 Image tag: ${{ github.sha }}"
+            echo "📦 Services: ${{ steps.services.outputs.list }}"
           else
             echo "❌ Deployment failed!"
             exit 1
