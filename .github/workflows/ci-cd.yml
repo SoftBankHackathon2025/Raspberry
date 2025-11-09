@@ -167,11 +167,18 @@ jobs:
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
+          
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create optimized Dockerfile
         run: |
           cat > ${{ matrix.service }}/Dockerfile.fast << 'EOF'
-          FROM eclipse-temurin:17-jre-focal
+          FROM ghcr.io/eclipse-temurin/jre:17-jre
           WORKDIR /app
           COPY ${{ matrix.service }}/build/libs/*.jar app.jar
           EXPOSE 8080
