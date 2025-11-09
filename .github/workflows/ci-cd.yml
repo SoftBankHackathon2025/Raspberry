@@ -11,7 +11,7 @@ permissions:
   security-events: write
 
 env:
-  DOCKER_REGISTRY: kwa06001
+  DOCKER_REGISTRY: softbank2025
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:
@@ -275,14 +275,14 @@ jobs:
           cp docker-compose.yml docker-compose.yml.backup
           
           for service in $SERVICES; do
-            sed -i "s|image: kwa06001/${service}:.*|image: kwa06001/${service}:${IMAGE_TAG}|g" docker-compose.yml
+            sed -i "s|image: softbank2025/${service}:.*|image: softbank2025/${service}:${IMAGE_TAG}|g" docker-compose.yml
           done
           
           sed -i '/build:/,+2d' docker-compose.yml
           
           echo "📥 Pulling images (parallel)..."
           for service in $SERVICES; do
-            docker pull kwa06001/${service}:${IMAGE_TAG} &
+            docker pull softbank2025/${service}:${IMAGE_TAG} &
           done
           wait
           

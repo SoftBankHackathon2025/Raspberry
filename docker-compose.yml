@@ -1,6 +1,6 @@
 services:
   server:
-    image: kwa06001/server:latest
+    image: softbank2025/server:latest
     build:
       context: .
       dockerfile: ./server/Dockerfile
@@ -17,7 +17,7 @@ services:
       - eureka.server.enable-self-preservation=false
 
   gateway:
-    image: kwa06001/gateway:latest
+    image: softbank2025/gateway:latest
     build:
       context: .
       dockerfile: ./gateway/Dockerfile
@@ -33,7 +33,7 @@ services:
     restart: unless-stopped
 
   fe:
-    image: kwa06001/fe:latest
+    image: softbank2025/fe:latest
     build:
       context: .
       dockerfile: ./fe/Dockerfile
@@ -49,7 +49,7 @@ services:
     restart: unless-stopped
 
   deploy:
-    image: kwa06001/deploy:latest
+    image: softbank2025/deploy:latest
     build:
       context: .
       dockerfile: ./deploy/Dockerfile
@@ -65,7 +65,7 @@ services:
     restart: unless-stopped
 
   user:
-    image: kwa06001/user:latest
+    image: softbank2025/user:latest
     build:
       context: .
       dockerfile: ./user/Dockerfile
