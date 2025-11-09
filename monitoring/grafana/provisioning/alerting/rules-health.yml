@@ -18,9 +18,9 @@ groups:
               datasource: { type: prometheus, uid: DS_PROMETHEUS }
               expr: |
                 sum by(instance)(
-                  (1 - min_over_time(up{instance="deploy:8080"}[2m]))
-                  or on (instance) absent(up{instance="deploy:8080"})
-                  or on (instance) (up{instance="deploy:8080"} * 0)
+                  (1 - min_over_time(up{instance="deploy:8082"}[2m]))
+                  or on (instance) absent(up{instance="deploy:8082"})
+                  or on (instance) (up{instance="deploy:8082"} * 0)
                 )
               instant: false
           - refId: B
@@ -104,9 +104,9 @@ groups:
               datasource: { type: prometheus, uid: DS_PROMETHEUS }
               expr: |
                 sum by(instance)(
-                  (1 - min_over_time(up{instance="frontend:8080"}[2m]))
-                  or on (instance) absent(up{instance="frontend:8080"})
-                  or on (instance) (up{instance="frontend:8080"} * 0)
+                  (1 - min_over_time(up{instance="frontend:8081"}[2m]))
+                  or on (instance) absent(up{instance="frontend:8081"})
+                  or on (instance) (up{instance="frontend:8081"} * 0)
                 )
               instant: false
           - refId: B
@@ -190,9 +190,9 @@ groups:
               datasource: { type: prometheus, uid: DS_PROMETHEUS }
               expr: |
                 sum by(instance)(
-                  (1 - min_over_time(up{instance="user:8080"}[2m]))
-                  or on (instance) absent(up{instance="user:8080"})
-                  or on (instance) (up{instance="user:8080"} * 0)
+                  (1 - min_over_time(up{instance="user:8083"}[2m]))
+                  or on (instance) absent(up{instance="user:8083"})
+                  or on (instance) (up{instance="user:8083"} * 0)
                 )
               instant: false
           - refId: B
