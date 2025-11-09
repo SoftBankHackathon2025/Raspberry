@@ -99,7 +99,7 @@ services:
       - microservices
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:9.5.15
     container_name: grafana
     ports:
       - "3000:3000"
