@@ -47,26 +47,30 @@ spring:
                   maxBackoff: 500ms
                   factor: 2
         
-        # Frontend Service Routes
-        - id: fe-service
+        # Frontend Service Routes (API 접근용)
+        - id: fe-service-api
           uri: lb://fe
           predicates:
-            - Path=/fe/**, /frontend/**
+            - Path=/api/fe/**, /frontend/api/**
           filters:
             - name: StripPrefix
               args:
-                parts: 1
+                parts: 2
             - name: AddResponseHeader
               args:
                 name: X-Frontend-Service
-                value: fe
+                value: fe-api
         
-        # Default Route to Frontend
-        - id: default-route
+        # Default Route to Frontend (모든 웹 페이지 처리)
+        - id: fe-default-route
           uri: lb://fe
           predicates:
             - Path=/**
-          order: 1000
+          filters:
+            - name: AddResponseHeader
+              args:
+                name: X-Frontend-Service
+                value: fe-web
       
       # Global filters
       default-filters:

@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title th:text="${title}">Raspberry</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f5f5f5; }
+        .header { background-color: #333; color: white; padding: 1rem; text-align: center; margin-bottom: 20px; }
+        .nav { display: flex; justify-content: center; gap: 20px; margin-bottom: 30px; }
+        .nav a { text-decoration: none; padding: 10px 15px; background-color: #007bff; color: white; border-radius: 5px; }
+        .nav a:hover { background-color: #0056b3; }
+        .nav a.active { background-color: #28a745; }
+        .content { max-width: 800px; margin: 0 auto; background-color: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .footer { text-align: center; margin-top: 40px; color: #666; }
+        .contact-info { background-color: #f8f9fa; padding: 20px; margin: 15px 0; border-radius: 5px; }
+        .contact-item { margin: 10px 0; padding: 10px; border-left: 3px solid #007bff; background-color: white; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🍓 Raspberry</h1>
+        <p>SoftBank Hackathon 2025</p>
+    </div>
+    
+    <nav class="nav">
+        <a href="/" th:class="${page == 'home'} ? 'active' : ''">홈</a>
+        <a href="/about" th:class="${page == 'about'} ? 'active' : ''">소개</a>
+        <a href="/services" th:class="${page == 'services'} ? 'active' : ''">서비스</a>
+        <a href="/products" th:class="${page == 'products'} ? 'active' : ''">제품</a>
+        <!-- <a href="/contact" th:class="${page == 'contact'} ? 'active' : ''">연락처</a> -->
+    </nav>
+    
+    <div class="content">
+        <h2>📞 연락처 정보</h2>
+        <p>궁금한 사항이 있으시면 언제든지 문의해 주세요.</p>
+        <p><strong>현재 페이지:</strong> <span th:text="${page}">contact</span></p>
+        
+        <div class="contact-info">
+            <h3>📧 연락처</h3>
+            <div class="contact-item">
+                <strong>📧 이메일:</strong> 
+                <a th:href="'mailto:' + ${email}" th:text="${email}">contact@raspberry.com</a>
+            </div>
+            <div class="contact-item">
+                <strong>📱 전화번호:</strong> 
+                <span th:text="${phone}">+82-2-1234-5678</span>
+            </div>
+            <div class="contact-item">
+                <strong>🌐 GitHub:</strong> 
+                <a href="https://github.com/softbank/raspberry" target="_blank">github.com/softbank/raspberry</a>
+            </div>
+        </div>
+
+        <div class="contact-info">
+            <h3>🏢 개발팀</h3>
+            <div class="contact-item">
+                <strong>프로젝트:</strong> SoftBank Hackathon 2025
+            </div>
+            <div class="contact-item">
+                <strong>기술 스택:</strong> Spring Cloud Microservices
+            </div>
+            <div class="contact-item">
+                <strong>개발 기간:</strong> 2025년
+            </div>
+        </div>
+        
+        <div style="background-color: #e9ecef; padding: 20px; border-radius: 5px; margin-top: 20px;">
+            <h3>🔀 라우팅 정보</h3>
+            <p>이 페이지는 <strong>FE 서비스 내부</strong>에서 라우팅되었습니다.</p>
+            <p>Gateway → FE Service → Spring MVC Controller → Thymeleaf 템플릿</p>
+            <ul>
+                <li>Gateway URL: <code>http://localhost:8080/contact</code></li>
+                <li>FE Service: <code>http://localhost:8081/contact</code></li>
+                <li>라우팅 경로: <code>@GetMapping("/contact")</code></li>
+            </ul>
+        </div>
+    </div>
+    
+    <div class="footer">
+        <p>© 2025 Raspberry - SoftBank Hackathon</p>
+    </div>
+</body>
+</html>
