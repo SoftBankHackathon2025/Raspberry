@@ -1,9 +1,10 @@
 services:
-  eureka-server:
+  server:
+    image: kwa06001/server:latest
     build:
       context: .
       dockerfile: ./server/Dockerfile
-    container_name: eureka-server
+    container_name: server
     ports:
       - "8761:8761"
     networks:
@@ -16,6 +17,7 @@ services:
       - eureka.server.enable-self-preservation=false
 
   gateway:
+    image: kwa06001/gateway:latest
     build:
       context: .
       dockerfile: ./gateway/Dockerfile
@@ -23,29 +25,31 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      - eureka-server
+      - server
     networks:
       - microservices
     environment:
-      - eureka.client.service-url.defaultZone=http://eureka-server:8761/eureka/
+      - eureka.client.service-url.defaultZone=http://server:8761/eureka/
     restart: unless-stopped
 
-  frontend:
+  fe:
+    image: kwa06001/fe:latest
     build:
       context: .
       dockerfile: ./fe/Dockerfile
-    container_name: frontend
+    container_name: fe
     ports:
       - "8081:8081"
     depends_on:
-      - eureka-server
+      - server
     networks:
       - microservices
     environment:
-      - eureka.client.service-url.defaultZone=http://eureka-server:8761/eureka/
+      - eureka.client.service-url.defaultZone=http://server:8761/eureka/
     restart: unless-stopped
 
   deploy:
+    image: kwa06001/deploy:latest
     build:
       context: .
       dockerfile: ./deploy/Dockerfile
@@ -53,14 +57,15 @@ services:
     ports:
       - "8082:8082"
     depends_on:
-      - eureka-server
+      - server
     networks:
       - microservices
     environment:
-      - eureka.client.service-url.defaultZone=http://eureka-server:8761/eureka/
+      - eureka.client.service-url.defaultZone=http://server:8761/eureka/
     restart: unless-stopped
 
   user:
+    image: kwa06001/user:latest
     build:
       context: .
       dockerfile: ./user/Dockerfile
@@ -68,11 +73,11 @@ services:
     ports:
       - "8083:8083"
     depends_on:
-      - eureka-server
+      - server
     networks:
       - microservices
     environment:
-      - eureka.client.service-url.defaultZone=http://eureka-server:8761/eureka/
+      - eureka.client.service-url.defaultZone=http://server:8761/eureka/
     restart: unless-stopped
 
   prometheus:
@@ -85,9 +90,9 @@ services:
     ports:
       - "9090:9090"
     depends_on:
-      - eureka-server
+      - server
       - gateway
-      - frontend
+      - fe
       - deploy
       - user
     networks:
