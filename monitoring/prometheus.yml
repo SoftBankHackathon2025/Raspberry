@@ -8,13 +8,13 @@ scrape_configs:
       - targets: ['gateway:8080']
         labels:
           application: 'gateway'
-      - targets: ['fe:8080']
+      - targets: ['fe:8081']
         labels:
           application: 'frontend'
-      - targets: ['deploy:8080']
+      - targets: ['deploy:8082']
         labels:
           application: 'deploy'
-      - targets: ['user:8080']
+      - targets: ['user:8083']
         labels:
           application: 'user'
       - targets: ['server:8761']
