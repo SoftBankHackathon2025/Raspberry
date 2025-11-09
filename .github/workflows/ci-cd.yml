@@ -11,11 +11,10 @@ permissions:
   security-events: write
 
 env:
-  DOCKER_REGISTRY: kwa06001
+  DOCKER_REGISTRY: softbank2025
   IMAGE_TAG: ${{ github.sha }}
 
 jobs:
-  # 변경된 서비스 감지 + 빌드를 한 번에
   build-jars:
     name: Build All JARs
     runs-on: ubuntu-latest
@@ -141,7 +140,6 @@ jobs:
             user/build/libs/*.jar
           retention-days: 1
 
-  # 5개 서비스 완전 병렬 빌드
   docker-build-scan-push:
     name: Docker Build & Push
     needs: build-jars
@@ -170,7 +168,6 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_PASSWORD }}
 
-      # 최적화된 Dockerfile 사용 (JAR 파일 직접 복사)
       - name: Create optimized Dockerfile
         run: |
           cat > ${{ matrix.service }}/Dockerfile.fast << 'EOF'
@@ -190,10 +187,13 @@ jobs:
           tags: |
             ${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}:${{ env.IMAGE_TAG }}
             ${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}:latest
-          cache-from: type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}:buildcache
-          cache-to: type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}:buildcache,mode=max
+          cache-from: |
+            type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}:buildcache
+            type=gha
+          cache-to: |
+            type=registry,ref=${{ env.DOCKER_REGISTRY }}/${{ matrix.service }}:buildcache,mode=max
+            type=gha,mode=max
 
-      # Trivy 스캔 (백그라운드, 블로킹 없음)
       - name: Run Trivy scan
         uses: aquasecurity/trivy-action@master
         continue-on-error: true
@@ -212,12 +212,11 @@ jobs:
           sarif_file: 'trivy-results-${{ matrix.service }}.sarif'
           category: 'trivy-${{ matrix.service }}'
 
-  # 배포
   deploy-to-ec2:
     name: Deploy to EC2
     needs: [build-jars, docker-build-scan-push]
     runs-on: ubuntu-latest
-    if: (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') && needs.build-jars.outputs.has-changes == 'true'
+    if: (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/heads/feat/')) && needs.build-jars.outputs.has-changes == 'true'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -276,24 +275,24 @@ jobs:
           cp docker-compose.yml docker-compose.yml.backup
           
           for service in $SERVICES; do
-            sed -i "s|image: kwa06001/${service}:.*|image: kwa06001/${service}:${IMAGE_TAG}|g" docker-compose.yml
+            sed -i "s|image: softbank2025/${service}:.*|image: softbank2025/${service}:${IMAGE_TAG}|g" docker-compose.yml
           done
           
           sed -i '/build:/,+2d' docker-compose.yml
           
           echo "📥 Pulling images (parallel)..."
           for service in $SERVICES; do
-            docker pull kwa06001/${service}:${IMAGE_TAG} &
+            docker pull softbank2025/${service}:${IMAGE_TAG} &
           done
           wait
           
-          echo "🛑 Stopping and removing old services..." 
-          docker-compose stop $SERVICES || true              
-          docker-compose rm -f $SERVICES || true           
+          echo "🛑 Stopping and removing old services..."
+          docker-compose stop $SERVICES || true
+          docker-compose rm -f $SERVICES || true
           
-          echo "🚀 Creating new services..."              
+          echo "🚀 Creating new services..."
           docker-compose up -d --no-deps $SERVICES
-
+          
           echo "📊 Ensuring monitoring services are running..."
           docker-compose up -d prometheus grafana
           
