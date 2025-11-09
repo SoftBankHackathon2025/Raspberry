@@ -108,7 +108,13 @@
 
       <div class="iframe-container">
         <h3>🌐 Eureka Service Registry</h3>
-        <iframe src="http://3.34.94.55:8761/" title="Eureka Server Dashboard" frameborder="0"></iframe>
+        <div class="monitor-controls">
+          <button id="iframeRefreshBtn" class="btn btn-secondary" style="padding: 8px 12px; font-size: 12px;">🔄 새로고침</button>
+          <label style="margin-left: 10px; font-size: 12px;">
+            <input type="checkbox" id="iframeAutoRefresh" /> 자동 새로고침 (10초)
+          </label>
+        </div>
+        <iframe id="eurekaIframe" src="http://3.34.94.55:8761/" title="Eureka Server Dashboard" frameborder="0"></iframe>
       </div>
     </div>
 
@@ -148,8 +154,12 @@
       const logTitle = $('#logTitle');
       const logBody = $('#logBody');
       const closeModal = $('#closeModal');
+      const iframeRefreshBtn = $('#iframeRefreshBtn');
+      const iframeAutoRefresh = $('#iframeAutoRefresh');
+      const eurekaIframe = $('#eurekaIframe');
       
       let pollingInterval = null;
+      let iframeRefreshInterval = null;
       let currentRuns = [];
       let triggerTime = null; // 워크플로우 트리거 시점 저장
 
@@ -552,6 +562,15 @@
         return `${seconds}초`;
       }
 
+      // iframe 새로고침 함수
+      function refreshIframe() {
+        const currentSrc = eurekaIframe.src;
+        eurekaIframe.src = '';
+        setTimeout(() => {
+          eurekaIframe.src = currentSrc;
+        }, 100);
+      }
+
       // 이벤트 리스너들
       deployBtn.addEventListener('click', triggerDispatch);
       
@@ -579,6 +598,20 @@
       logModal.addEventListener('click', function(e) {
         if (e.target === logModal) {
           logModal.style.display = 'none';
+        }
+      });
+      
+      // iframe 새로고침 버튼 이벤트
+      iframeRefreshBtn.addEventListener('click', function() {
+        refreshIframe();
+      });
+      
+      // iframe 자동 새로고침 이벤트
+      iframeAutoRefresh.addEventListener('change', function() {
+        if (this.checked) {
+          iframeRefreshInterval = setInterval(refreshIframe, 10000);
+        } else {
+          clearInterval(iframeRefreshInterval);
         }
       });
       
